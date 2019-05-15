@@ -45,7 +45,7 @@ Get-PSSession | Remove-PSSession -WhatIf:$false
 # AD Domain Controller Session
 $adCmdLets = 'Get-ADUser', 'Set-ADUser'
 $adSession = New-PSSession -ComputerName $DomainController -Credential $ADCredential
-Import-PSSession -Session $adSession -Module ActiveDirectory -CommandName $adCmdLets -AllowClobber
+Import-PSSession -Session $adSession -Module ActiveDirectory -CommandName $adCmdLets -AllowClobber | Out-Null
 
 # Imported Functions
 . '.\lib\Add-Log.ps1'
@@ -82,7 +82,7 @@ foreach ( $row in $dbResults ) {
     if ($user."$prop" -cnotmatch $value) {
      Add-Log update ("{0},{1},{2} => {3}" -f $user.SamAccountName, $prop, $($user."$prop"), $value)
      # Set-ADUSer -Replace works for updating most common attributes.
-     # Set-ADUser -Identity $user.SamAccountName -Replace @{$prop = $value } -WhatIf:$WhatIf
+     Set-ADUser -Identity $user.SamAccountName -Replace @{$prop = $value } -WhatIf:$WhatIf
     } # End  compare data between AD and DB
    } # End Check if value is present
   } # End parse the db column names
