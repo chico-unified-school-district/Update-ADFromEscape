@@ -37,6 +37,7 @@ param (
  [Parameter(Mandatory = $True)]
  [Alias('SQLCred')]
  [System.Management.Automation.PSCredential]$SQLCredential,
+ [Alias('wi')]
  [SWITCH]$WhatIf
 )
 
@@ -92,16 +93,13 @@ foreach ( $row in $dbResults ) {
   # Fix O365 Global Address Book enrty
   # msExchHideFromAddressLists is not a header in the list of rows from the DB query
   if ( (Get-ADuser -Identity $user.ObjectGUID).msExchHideFromAddressLists -eq $true ) {
-   Add-Log update ("{0},msExchHideFromAddressLists = FALSE" -f $user.SamAccountName)
+   Add-Log addressbook ("{0},msExchHideFromAddressLists = FALSE" -f $user.SamAccountName)
    Set-ADUser -Identity $user.ObjectGUID -Replace @{msExchHideFromAddressLists=$false} -Whatif:$WhatIf
   }
   # Renames the user object if name change detected
+  # In the event of a name change this will overwrite custom Display Name data in AD
   $displayName = $user.GivenName+' '+$user.Surname
   if ( ($row.GivenName -cnotcontains $user.GivenName) -or ($row.sn -cnotcontains $user.SurName) ){
-   'row.givenname '+$row.GivenName
-   'user.GivenName '+$user.GivenName
-   'row.sn '+$row.sn
-   'user.SurName '+$user.SurName
    $newDisplayName = $row.GivenName+' '+$row.sn
    Set-ADuser -Identity $user.ObjectGUID -DisplayName $newDisplayName -Confirm:$false -WhatIf:$WhatIf
    Rename-ADObject -Identity $user.ObjectGUID -NewName $newDisplayName -Confirm:$false -WhatIf:$WhatIf

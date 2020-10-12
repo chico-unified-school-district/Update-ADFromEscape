@@ -23,5 +23,5 @@ SELECT
    WHERE
 	HREmployment.PersonTypeId IN (1,2,4)
     AND HREmployment.EmploymentStatusCode IN ('A','I','L','W')
-    -- AND vwHREmploymentList.DateTimeEdited > DATEADD(day,-30,getdate())
+    --AND vwHREmploymentList.DateTimeEdited > DATEADD(day,-30,getdate())
    ORDER BY employeeID
