@@ -82,14 +82,23 @@ foreach ( $row in $dbResults ) {
     if ($user."$prop" -cnotmatch $value) {
      Add-Log update ("{0},{1},{2} => {3}" -f $user.SamAccountName, $prop, $($user."$prop"), $value)
      # Set-ADUSer -Replace works for updating most common attributes.
-     Set-ADUser -Identity $user.SamAccountName -Replace @{$prop = $value } -WhatIf:$WhatIf
+     Set-ADUser -Identity $user.ObjectGUID -Replace @{$prop = $value } -WhatIf:$WhatIf
     } # End  compare data between AD and DB
    } # End Check if value is present
   } # End parse the db column names
   # Fix O365 Global Address Book enrty
-  if ( (Get-ADuser -Identity $user.SamAccountName).msExchHideFromAddressLists -eq $true ) {
+  if ( (Get-ADuser -Identity $user.ObjectGUID).msExchHideFromAddressLists -eq $true ) {
    Add-Log update ("{0},msExchHideFromAddressLists = FALSE" -f $user.SamAccountName)
-   Set-ADUser -Identity $user.SamAccountName -Replace @{msExchHideFromAddressLists = "FALSE" } -Whatif:$WhatIf
+   Set-ADUser -Identity $user.ObjectGUID -Replace @{msExchHideFromAddressLists=$false} -Whatif:$WhatIf
+  }
+  # Renames the user object if name change detected
+  $displayName = $user.GivenName+' '+$user.Surname
+  $refreshedUserData = Get-ADUser $user.ObjectGUID -Properties *
+  if ( ($refreshedUserData.displayname -notmatch $user.GivenName) -or ($refreshedUserData.displayname -notmatch $user.SurName) ){
+   $newDisplayName = $refreshedUserData.GivenName+' '+$refreshedUserData.Surname
+   Set-ADuser -Identity $user.ObjectGUID -DisplayName $newDisplayName -Confirm:$false -WhatIf:$WhatIf
+   Rename-ADObject -Identity $user.ObjectGUID -NewName $newDisplayName -Confirm:$false -WhatIf:$WhatIf
+   Add-Log rename ('{0} renamed to {1}' -f $displayName, $newDisplayName) -Whatif:$WhatIf
   }
  } # End Check if $user exists
 } # End Process Rows
