@@ -32,7 +32,6 @@ param (
  [Parameter(Mandatory = $True)]
  [string]$SQLServer,
  [Parameter(Mandatory = $True)]
- [string]$SQLDatabase,
  # Credential object with database select permission.
  [Parameter(Mandatory = $True)]
  [Alias('SQLCred')]
