@@ -20,6 +20,6 @@ SELECT
    LEFT JOIN HREmployment ON HREmployment.EmpID = vwHREmploymentList.EmpID
    WHERE
 	HREmployment.PersonTypeId IN (1,2,4)
-    AND HREmployment.EmploymentStatusCode IN ('A','L','W')
+    AND HREmployment.EmploymentStatusCode IN ('A','L','W','I','S')
     --AND vwHREmploymentList.DateTimeEdited > DATEADD(day,-5,getdate())
    ORDER BY employeeID
