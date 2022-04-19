@@ -14,8 +14,14 @@ SELECT
     vwHREmploymentList.JobClassDescr             AS description,
     vwHREmploymentList.JobCategoryDescr          AS department,
     vwHREmploymentList.SiteID                    AS departmentnumber,
+	-- ( CASE
+ --     WHEN vwHREmploymentList.NameFirstPreferred <> ''
+ --      THEN vwHREmploymentList.NameFirstPreferred
+ --     ELSE vwHREmploymentList.NameFirst
+ --     END  ) + ' ' + vwHREmploymentList.NameLast  AS DisplayName,
     vwHREmploymentList.SiteDescr                 AS physicalDeliveryOfficeName,
     vwHREmploymentList.BargUnitID                AS extensionAttribute1
+
    FROM vwHREmploymentList
    LEFT JOIN HREmployment ON HREmployment.EmpID = vwHREmploymentList.EmpID
    WHERE

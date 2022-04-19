@@ -107,7 +107,8 @@ function Update-ADAttributes {
    if ( $propData -match '[A-Za-z0-9]') {
     # Begin case-sensitive compare data between AD and DB
     if ( $adObj."$prop" -cnotcontains $propData ) {
-     Write-Host ("{0},{1},[{2}] => [{3}]" -f $adObj.SamAccountName, $prop, $($adObj."$prop"), $propData) -Fore Blue
+     $msgVars = $MyInvocation.MyCommand.Name, $id, $adObj.SamAccountName, $prop, $($adObj."$prop"), $propData
+     Write-Host ("{0},{1},{2},{3},[{4}] => [{5}]" -f $msgVars) -Fore Blue
      Write-Debug 'Set?'
      Set-ADUser -Identity $adObj.ObjectGUID -Replace @{$prop = $propData } -WhatIf:$WhatIf
     } # End  compare data between AD and DB
