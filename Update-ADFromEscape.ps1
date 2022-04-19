@@ -122,8 +122,9 @@ function Update-ADAttributes {
  }
 }
 function Start-ADSession {
+ $cmdlets = 'Get-ADuser', 'Set-ADuser'
  $adSession = New-PSSession -ComputerName $DomainController -Credential $ADCredential
- Import-PSSession -Session $adSession -Module ActiveDirectory -AllowClobber | Out-Null
+ Import-PSSession -Session $adSession -Module ActiveDirectory -CommandName $cmdlets -AllowClobber | Out-Null
 }
 function Start-CheckUserInfo {
  Write-Host ('{0}' -f $MyInvocation.MyCommand.Name)
