@@ -121,17 +121,22 @@ function Update-ADAttributes {
   $count++
  }
 }
+function Start-ADSession {
+ $adSession = New-PSSession -ComputerName $DomainController -Credential $ADCredential
+ Import-PSSession -Session $adSession -Module ActiveDirectory -AllowClobber | Out-Null
+}
 function Start-CheckUserInfo {
  Write-Host ('{0}' -f $MyInvocation.MyCommand.Name)
  if ($WhatIf) { Show-TestRun }
  Clear-SessionData
  'SQLServer' | Load-Module
+ Start-ADSession
 
  $global:escapeData = Get-EscapeData
  $global:escapeRowNames = ($global:escapeData | Get-Member -MemberType Properties).name
 
  # Start-ADSession
- $global:adData = Get-ADData $global:escRowNames
+ $global:adData = Get-ADData $global:escapeRowNames
 
  $results = Compare-Data $global:escapeData $global:adData $global:escapeRowNames
  $results | Find-DuplicateIds | Find-ActiveEscapeUser | Update-ADAttributes
