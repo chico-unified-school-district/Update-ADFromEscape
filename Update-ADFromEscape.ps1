@@ -29,7 +29,6 @@ param (
  [Alias('SearchBase')]
  [string]$ActiveDirectorySearchBase,
  [Parameter(Mandatory = $True)]
- [ValidateScript( { Test-Connection -ComputerName $_ -Quiet -Count 3 })]
  [string]$SQLServer,
  [Parameter(Mandatory = $True)]
  [string]$SQLDatabse,
