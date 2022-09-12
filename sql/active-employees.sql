@@ -14,11 +14,20 @@ SELECT
     vwHREmploymentList.JobClassDescr             AS description,
     vwHREmploymentList.JobCategoryDescr          AS department,
     vwHREmploymentList.SiteID                    AS departmentnumber,
-        -- ( CASE
- --     WHEN vwHREmploymentList.NameFirstPreferred <> ''
- --      THEN vwHREmploymentList.NameFirstPreferred
- --     ELSE vwHREmploymentList.NameFirst
- --     END  ) + ' ' + vwHREmploymentList.NameLast  AS DisplayName,
+    (
+		CASE
+		WHEN vwHREmploymentList.NameFirstPreferred <> ''
+		   THEN vwHREmploymentList.NameFirstPreferred
+		ELSE vwHREmploymentList.NameFirst
+		END
+	) + ' ' + vwHREmploymentList.NameLast        AS DisplayName,
+	    (
+		CASE
+		WHEN vwHREmploymentList.NameFirstPreferred <> ''
+		   THEN vwHREmploymentList.NameFirstPreferred
+		ELSE vwHREmploymentList.NameFirst
+		END
+	) + ' ' + vwHREmploymentList.NameLast        AS Name,
     vwHREmploymentList.SiteDescr                 AS physicalDeliveryOfficeName,
     vwHREmploymentList.BargUnitID                AS extensionAttribute1
 

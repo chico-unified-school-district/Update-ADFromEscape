@@ -91,6 +91,11 @@ function Get-EscapeData {
  }
  Invoke-Sqlcmd @sqlParams | ConvertTo-Csv | ConvertFrom-Csv
 }
+function New-UserProperyObj {
+ process {
+
+ }
+}
 function Update-ADAttributes {
  begin {
   $count = 1
