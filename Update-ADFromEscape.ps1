@@ -18,9 +18,8 @@
 [cmdletbinding()]
 param (
  [Parameter(Mandatory = $True)]
- [Alias('DC')]
- [ValidateScript( { Test-Connection -ComputerName $_ -Quiet -Count 3 })]
- [string]$DomainController,
+ [Alias('DCs')]
+ [string[]]$DomainControllers,
  [Parameter(Mandatory = $True)]
  [Alias('ADCred')]
  [System.Management.Automation.PSCredential]$ADCredential,
@@ -29,11 +28,17 @@ param (
  [Alias('SearchBase')]
  [string]$ActiveDirectorySearchBase,
  [Parameter(Mandatory = $True)]
- [string]$SQLServer,
+ [string]$SQLServerEmployees,
  [Parameter(Mandatory = $True)]
- [string]$SQLDatabse,
+ [string]$SQLDatabaseEmployees,
  [Parameter(Mandatory = $True)]
- [System.Management.Automation.PSCredential]$SQLCredential,
+ [System.Management.Automation.PSCredential]$SQLCredentialEmployees,
+ [Parameter(Mandatory = $True)]
+ [string]$SQLServerSiteRef,
+ [Parameter(Mandatory = $True)]
+ [string]$SQLDatabaseSiteRef,
+ [Parameter(Mandatory = $True)]
+ [System.Management.Automation.PSCredential]$SQLCredentialSiteRef,
  [Alias('wi')]
  [SWITCH]$WhatIf
 )
@@ -52,6 +57,7 @@ function Compare-Data ($escapeData, $adData, $properties) {
  Write-Verbose ( '{0},Count: {1}' -f $MyInvocation.MyCommand.name, $results.count)
  $results
 }
+
 filter Find-DuplicateIds {
  $id = $_.employeeId
  $adObj = $global:adData.Where({ $_.employeeId -eq $id })
@@ -62,6 +68,7 @@ filter Find-DuplicateIds {
  }
  $_
 }
+
 filter Find-ActiveEscapeUser {
  $id = $_.employeeId
  $escObj = $global:escapeData.Where({ $_.employeeId -eq $id })
@@ -71,6 +78,7 @@ filter Find-ActiveEscapeUser {
  }
  $_
 }
+
 function Get-ADData ($properties) {
  Write-Verbose ('{0}' -f $MyInvocation.MyCommand.Name)
  $adParams = @{
@@ -80,20 +88,62 @@ function Get-ADData ($properties) {
  }
  Get-ADuser @adParams | Where-Object { $_.employeeId -match '^\d{4,5}$' }
 }
+
 function Get-EscapeData {
  Write-Verbose ('{0}' -f $MyInvocation.MyCommand.Name)
- $sql = Get-Content .\sql\active-employees.sql -Raw
  $sqlParams = @{
-  Server     = $SQLServer
-  Database   = $SQLDatabse
-  Credential = $SQLCredential
-  Query      = $sql
+  Server     = $SQLServerEmployees
+  Database   = $SQLDatabaseEmployees
+  Credential = $SQLCredentialEmployees
+  Query      = (Get-Content .\sql\active-employees.sql -Raw)
  }
  Invoke-Sqlcmd @sqlParams | ConvertTo-Csv | ConvertFrom-Csv
 }
-function New-UserProperyObj {
- process {
 
+function Get-SiteRefData {
+ $params = @{
+  Server     = $SQLServerSiteRef
+  Database   = $SQLDatabaseSiteRef
+  Credential = $SQLCredentialSiteRef
+  Query      = 'SELECT * FROM zone_ref;'
+ }
+ Invoke-Sqlcmd @params
+}
+function Get-Site ($siteRef, $siteCode) {
+ $siteRef.Where({ $_.siteCode -eq $siteCode })
+}
+
+function New-UserProperyObj {
+ begin {
+  $siteRef = Get-SiteRefData
+ }
+ process {
+  $siteData = Get-Site $siteRef $_.SiteID
+  $desc = if ($siteData -and $siteData.siteAbbrv.length -gt 1) {
+   ($siteData.siteAbbrv + ' - ' + $_.JobClassDescr) -replace '\s+', ' '
+  }
+  else {
+   $_.JobClassDescr
+  }
+  $initial = if ($_.NameMiddle.length -gt 0) { $_.NameMiddle.SubString(0, 1) + '.' }
+  $name = ($_.NameFirst + ' ' + $_.NameLast) -replace ('\s+', ' ')
+  $obj = [PSCustomObject]@{
+   givenname                  = $_.NameFirst
+   sn                         = $_.NameLast
+   middlename                 = $_.NameMiddle
+   initials                   = $initial
+   displayName                = $name
+   name                       = $name
+   employeeID                 = $_.EmpID
+   company                    = 'Chico Unified School District'
+   title                      = $_.JobClassDescr
+   description                = $desc
+   department                 = $_.JobCategoryDescr
+   departmentnumber           = $_.SiteID
+   physicalDeliveryOfficeName = $_.SiteDescr
+   extensionAttribute1        = $_.BargUnitID
+  }
+  $obj
  }
 }
 function Update-ADAttributes {
@@ -126,11 +176,45 @@ function Update-ADAttributes {
   $count++
  }
 }
+function Update-ADAttributes2 {
+ begin {
+  $count = 1
+ }
+ process {
+  $id = $_.EmployeeID
+  # $adObj = $global:adData.Where({ $_.employeeId -eq $id })
+  # $escObj = $global:escapeData.Where({ $_.employeeId -eq $id })
+  Write-Verbose ('{0},{1}' -f $MyInvocation.MyCommand.Name, $adObj.SamAccountName)
+  Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.name, $_.EmployeeID)
+  Write-Verbose ($_ | Out-String)
+  foreach ($prop in $_.psobject.properties.name) {
+   # Begin parse the db column names
+   $propData = $escObj."$prop"
+   if ( $propData -match '[A-Za-z0-9]') {
+    # Begin case-sensitive compare data between AD and DB
+    if ( $adObj."$prop" -cnotcontains $propData ) {
+     $msgVars = $MyInvocation.MyCommand.Name, $id, $adObj.SamAccountName, $prop, $($adObj."$prop"), $propData
+     Write-Host ("{0},{1},{2},{3},[{4}] => [{5}]" -f $msgVars) -Fore Blue
+     Write-Debug 'Set?'
+     Set-ADUser -Identity $adObj.ObjectGUID -Replace @{$prop = $propData } -WhatIf:$WhatIf
+    } # End  compare data between AD and DB
+   }
+   else {
+    Write-Verbose ("{0},{1},No Escape property data" -f $adObj.SamAccountName, $prop)
+   }
+  }
+  Write-Debug 'ok'
+  Write-Verbose $count
+  $count++
+ }
+}
 function Start-ADSession {
+ $dc = Select-DomainController $DomainControllers
  $cmdlets = 'Get-ADuser', 'Set-ADuser'
- $adSession = New-PSSession -ComputerName $DomainController -Credential $ADCredential
+ $adSession = New-PSSession -ComputerName $dc -Credential $ADCredential
  Import-PSSession -Session $adSession -Module ActiveDirectory -CommandName $cmdlets -AllowClobber | Out-Null
 }
+
 function Start-CheckUserInfo {
  Write-Host ('{0}' -f $MyInvocation.MyCommand.Name)
  if ($WhatIf) { Show-TestRun }
@@ -139,7 +223,7 @@ function Start-CheckUserInfo {
  Start-ADSession
 
  $global:escapeData = Get-EscapeData
- $global:escapeRowNames = ($global:escapeData | Get-Member -MemberType Properties).name
+ # $global:escapeRowNames = ($global:escapeData | Get-Member -MemberType Properties).name
 
  # Start-ADSession
  $global:adData = Get-ADData $global:escapeRowNames
@@ -153,6 +237,8 @@ function Start-CheckUserInfo {
 # imported
 . .\lib\Clear-SessionData.ps1
 . .\lib\Load-Module.ps1
+. .\lib\Select-DomainController.ps1
 . .\lib\Show-TestRun.ps1
 # process
-Start-CheckUserInfo
+# Start-CheckUserInfo
+Get-EscapeData | New-UserProperyObj | Update-ADAttributes2

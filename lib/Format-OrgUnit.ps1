@@ -10,11 +10,11 @@ param(
  [Parameter(Mandatory = $True)]
  [string]$EmployeeOrgUnit,
  [Parameter(Mandatory = $True)]
- [string]$SQLRefServer,
+ [string]$SQLServerSiteRef,
  [Parameter(Mandatory = $True)]
- [string]$SQLRefDatabse,
+ [string]$SQLDatabaseSiteRef,
  [Parameter(Mandatory = $True)]
- [System.Management.Automation.PSCredential]$SQLRefCredential,
+ [System.Management.Automation.PSCredential]$SQLCredentialSiteRef,
  [Parameter(Mandatory = $True)]
  $EmployeeObj
 )
@@ -32,56 +32,44 @@ function Add-SiteInfo {
  }
 }
 
-function Get-UserOrgUnit {
- process {
-  # Site codes 500 and under are school sites
-  if ($_.siteCode -ge 500) {
-   Get-ServiceOrgUnit
-  }
-  else {
-   $_ | Get-SiteOrgUnit
-  }
- }
-}
-
-function Get-ServiceOrgUnit {
- $ouName = $_.siteDescription
- Get-ADOrganizationalUnit -Filter * -SearchBase $EmployeeOrgUnit |
- Where-Object { $_.DistinguishedName -match "^OU=$ouName," }
-}
-
 function Add-OrgLevel {
- begin {
-  $orgLevels = @{CSEA = 'Admin'; CUMA = 'Admin'; CUTA = 'Teacher' }
- }
  process {
-  $myOrgLevel = $orgLevels[$_.BargUnitId]
-  if (-not$myOrgLevel) {
+  $orgLevel = $_ | Get-OrgLevel
+  if (-not$orgLevel) {
    $msgVars = $MyInvocation.MyCommand.Name, $_.empId, $_.BargUnitId
    Write-Host ('{0},{1},{2},No matching BargUnitId. No org level set.' -f $msgVars)
    return
   }
-  $_ | Add-Member -MemberType NoteProperty -Name orgLevel -Value $myOrgLevel
+  $_ | Add-Member -MemberType NoteProperty -Name orgLevel -Value $orgLevel
   $_
+ }
+}
+
+function Get-OrgLevel {
+ begin {
+  # These Job Classes will be used to
+  # route an object to a site 'Admin' OU where applicable.
+  $jobClasses = 'Office', 'Mgr', 'Registrar', 'Counselor', 'Principal'
+  # These BargUnitIds will be used to
+  # route objects to 'Admin' or 'Teacher' OUs where applicable.
+  $orgLevels = @{CSEA = 'Teacher'; CUMA = 'Admin'; CUTA = 'Teacher' ; }
+ }
+ process {
+  # Get org level by 'JobClassDescr'
+  foreach ($class in $jobClasses) {
+   if ($_.JobClassDescr -match $class) {
+    "Admin"
+    return
+   }
+  }
+  # Get org level by 'BargUnitId'
+  if ($_.BargUnitId.length -gt 1 ) { $orgLevels[$_.BargUnitId] }
  }
 }
 
 function Get-Site ($siteRef, $siteCode) {
  $siteRef.Where({ $_.siteCode -eq $siteCode })
 }
-
-# function Get-SiteOrgUnit {
-#  begin {
-#   $employeeOUs = Get-ADOrganizationalUnit -filter * -SearchBase $EmployeeOrgUnit
-#  }
-#  process {
-#   # $ouLevel = $_.BargUnitId | Set-OrgUnitLevel
-#   # $ouName = $_.siteCode | Set-OrgUnitName
-#   if ($null -eq $ouLevel -or $null -eq $ouSite) { return }
-#   $employeeOus.Where({ ($_.DistinguishedName -match "^OU=$ouName,") -and
-#   ($_.DistinguishedName -match "\bOU=$ouLevel,") })
-#  }
-# }
 
 function Get-OrgUnit {
  begin {
@@ -91,9 +79,10 @@ function Get-OrgUnit {
   Write-Host ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.empId, $_.siteCode)
   $orgUnit = $_.siteData.orgUnit
   $ouLevel = $_.orgLevel
-  $targetOrgUnit = if ($_.siteCode -ge 500){
-   $employeeOus.Where({ ($_.DistinguishedName -match "^OU=$orgUnit,")})
-  } else {
+  $targetOrgUnit = if ($_.siteCode -ge 500) {
+   $employeeOus.Where({ ($_.DistinguishedName -match "^OU=$orgUnit,") })
+  }
+  else {
    $employeeOus.Where({ ($_.DistinguishedName -match "^OU=$orgUnit,") -and
    ($_.DistinguishedName -match "\bOU=$ouLevel,") })
   }
@@ -102,13 +91,13 @@ function Get-OrgUnit {
 }
 
 function Get-SiteRefData {
- $siteRefSQLParams = @{
-  Server     = $SQLRefServer
-  Database   = $SQLRefDatabse
-  Credential = $SQLRefCredential
+ $params = @{
+  Server     = $SQLServerSiteRef
+  Database   = $SQLDatabaseSiteRef
+  Credential = $SQLCredentialSiteRef
   Query      = 'SELECT * FROM zone_ref;'
  }
- Invoke-Sqlcmd @siteRefSQLParams
+ Invoke-Sqlcmd @params
 }
 
 $siteRef = Get-SiteRefData

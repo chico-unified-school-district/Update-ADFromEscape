@@ -1,0 +1,11 @@
+{
+ "orgUnitData": {
+  "root": "OU=Employees,OU=Users,OU=Domain_Root,DC=chico,DC=usd",
+  "":{
+   "admin": "Admin",
+   "districtServices": "District Services",
+   "teachers": "Teachers"
+  },
+  "sub"
+ }
+}
