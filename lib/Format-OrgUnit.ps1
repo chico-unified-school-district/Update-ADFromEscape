@@ -63,7 +63,7 @@ function Get-OrgLevel {
    }
   }
   # Get org level by 'BargUnitId'
-  if ($_.BargUnitId.length -gt 1 ) { $orgLevels[$_.BargUnitId] }
+  if ($_.BargUnitId -match '[A-Za-z0-9]') { $orgLevels[$_.BargUnitId] }
  }
 }
 

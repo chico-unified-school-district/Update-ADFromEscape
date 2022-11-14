@@ -24,4 +24,4 @@ WHERE
         PersonTypeId IN (1,2,4)
   AND EmploymentStatusCode NOT IN ('R','T')
 AND DateTimeEdited > DATEADD(day,-45,getdate())
-ORDER BY empId
+ORDER BY empId;
