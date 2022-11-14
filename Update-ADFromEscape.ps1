@@ -1,4 +1,3 @@
-#Requires -Version 5.0
 <#
 .SYNOPSIS
   Pull data from Employee Database (Escape Online) and
@@ -11,7 +10,6 @@
 .INPUTS
   Common parameters are used as inputs.
 .OUTPUTS
-  A log file is generated when using -Log [switch]
 .NOTES
 #>
 
@@ -43,41 +41,31 @@ param (
   [SWITCH]$WhatIf
 )
 
-function Compare-Data ($escapeData, $adData, $properties) {
-  Write-Verbose $MyInvocation.MyCommand.name
-  Write-Verbose ('{0},Escape Count: {1}, AD Count {2}' -f $MyInvocation.MyCommand.name, $escapeData.count, $adData.count )
-  $compareParams = @{
-    ReferenceObject  = $escapeData
-    DifferenceObject = $adData
-    Property         = $properties
-    Debug            = $false
-  }
-  $results = Compare-Object @compareParams | Where-Object { ($_.sideindicator -eq '=>') }
-  # $output = foreach ($item in $results) { $AeriesData.Where({ $_.employeeId -eq $item.employeeId }) }
-  Write-Verbose ( '{0},Count: {1}' -f $MyInvocation.MyCommand.name, $results.count)
-  $results
-}
+# function Compare-Data ($escapeData, $adData, $properties) {
+#   Write-Verbose $MyInvocation.MyCommand.name
+#   Write-Verbose ('{0},Escape Count: {1}, AD Count {2}' -f $MyInvocation.MyCommand.name, $escapeData.count, $adData.count )
+#   $compareParams = @{
+#     ReferenceObject  = $escapeData
+#     DifferenceObject = $adData
+#     Property         = $properties
+#     Debug            = $false
+#   }
+#   $results = Compare-Object @compareParams | Where-Object { ($_.sideindicator -eq '=>') }
+#   # $output = foreach ($item in $results) { $AeriesData.Where({ $_.employeeId -eq $item.employeeId }) }
+#   Write-Verbose ( '{0},Count: {1}' -f $MyInvocation.MyCommand.name, $results.count)
+#   $results
+# }
 
-filter Find-DuplicateIds {
-  $id = $_.employeeId
-  $adObj = $global:adData.Where({ $_.employeeId -eq $id })
-  if ($adObj.count -gt 1) {
-    Write-Warning ('{0},{1},Multiple AD objects detected' -f $MyInvocation.MyCommand.Name, $id)
-    Start-Sleep 20
-    return
-  }
-  $_
-}
-
-filter Find-ActiveEscapeUser {
-  $id = $_.employeeId
-  $escObj = $global:escapeData.Where({ $_.employeeId -eq $id })
-  if (-not$escObj) {
-    Write-Host ('{0},{1},Not active in Escape' -f $MyInvocation.MyCommand.Name, $id) -Fore Yellow
-    return
-  }
-  $_
-}
+# filter Find-DuplicateIds {
+#   $id = $_.employeeId
+#   $adObj = $adData.Where({ $_.employeeId -eq $id })
+#   if ($adObj.count -gt 1) {
+#     Write-Warning ('{0},{1},Multiple AD objects detected' -f $MyInvocation.MyCommand.Name, $id)
+#     Start-Sleep 20
+#     return
+#   }
+#   $_
+# }
 
 function Get-ADData ($properties) {
   Write-Verbose ('{0}' -f $MyInvocation.MyCommand.Name)
@@ -109,11 +97,12 @@ function Get-SiteRefData {
   }
   Invoke-Sqlcmd @params
 }
+
 function Get-Site ($siteRef, $siteCode) {
   $siteRef.Where({ $_.siteCode -eq $siteCode })
 }
 
-function New-UserObj {
+function New-PropertyObj {
   begin {
     $siteRef = Get-SiteRefData
   }
@@ -146,9 +135,9 @@ function New-UserObj {
   }
 }
 
-function Update-ADAttributes {
+function Update-ADAttributes ($adData, $properties) {
   begin {
-    $count = $global:adData.count
+    $count = $adData.count
     function Remove-ExtraSpaces ($string) {
       if ($string -match '\s{2,}') {
         $string -replace '\s+', ' '
@@ -157,7 +146,7 @@ function Update-ADAttributes {
   }
   process {
     $id = $_.EmployeeID
-    $adObj = $global:adData.Where({ $_.EmployeeID -eq $id })
+    $adObj = $adData.Where({ $_.EmployeeID -eq $id })
     if (-not$adObj) { return }
     Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.name, $_.EmployeeID)
     Write-Verbose ($_ | Out-String)
@@ -169,7 +158,7 @@ function Update-ADAttributes {
       Rename-ADObject -Identity $adObj.ObjectGUID -NewName $fixedName -WhatIf:$WhatIf
       Set-Aduser -Identity $adObj.ObjectGUID -DisplayName $fixedName -WhatIf:$WhatIf
     }
-    foreach ($prop in $_.psobject.properties.name) {
+    foreach ($prop in $properties) {
       $propData = $_.$prop
       # Ensure property has data
       if ( $propData -match '[A-Za-z0-9]') {
@@ -177,8 +166,8 @@ function Update-ADAttributes {
         if ( $adObj.$prop -cnotcontains $propData ) {
           $msgVars = $count, $MyInvocation.MyCommand.Name, $adObj.SamAccountName, $prop, $($adObj.$prop), $propData
           Write-Host ("{0},{1},{2},{3},[{4}] => [{5}]" -f $msgVars) -Fore Blue
-          # Write-Debug 'Set?'
-          # Set-ADUser -Identity $adObj.ObjectGUID -Replace @{$prop = $propData } -WhatIf:$WhatIf
+          Write-Debug 'Set?'
+          Set-ADUser -Identity $adObj.ObjectGUID -Replace @{$prop = $propData } -WhatIf:$WhatIf
         }
       }
       else {
@@ -192,38 +181,49 @@ function Update-ADAttributes {
 
 function Start-ADSession {
   $dc = Select-DomainController $DomainControllers
-  $cmdlets = 'Get-ADuser', 'Set-ADuser', 'Rename-ADObject'
+  $cmdlets = 'Get-ADuser', 'Set-ADuser', 'Rename-ADObject', 'Clear-ADAccountExpiration'
   $adSession = New-PSSession -ComputerName $dc -Credential $ADCredential
   Import-PSSession -Session $adSession -Module ActiveDirectory -CommandName $cmdlets -AllowClobber | Out-Null
 }
 
-function Start-CheckUserInfo {
-  Write-Host ('{0}' -f $MyInvocation.MyCommand.Name)
-  if ($WhatIf) { Show-TestRun }
-  Clear-SessionData
-  'SQLServer' | Load-Module
-  Start-ADSession
 
-  $global:escapeData = Get-EscapeData
-  # $global:escapeRowNames = ($global:escapeData | Get-Member -MemberType Properties).name
-
-  # Start-ADSession
-  $global:adData = Get-ADData $global:escapeRowNames
-
-  $results = Compare-Data $global:escapeData $global:adData $global:escapeRowNames
-  $results | Find-DuplicateIds | Find-ActiveEscapeUser | Update-ADAttributes
-  Clear-SessionData
-  if ($WhatIf) { Show-TestRun }
+function Update-AccountExpiration {
+  process {
+    $id = $_.EmployeeID
+    $adObj = Get-ADUser -Filter "EmployeeId -eq $id" -Properties *
+    if ($adObj) {
+      $msgVars = $MyInvocation.MyCommand.Name, $id, $adObj.SamAccountName
+      if (($adObj.AccountExpirationDate -is [datetime]) -and ($adObj.AccountExpirationDate -gt (Get-Date))) {
+        Write-Host ('{0},{1},{2},Clearing Expiration Date' -f $msgVars) -Fore DarkCyan
+        # Clear-ADAccountExpiration -Identity $adObj.ObjectGUID -Confirm:$false -WhatIf:$WhatIf
+      }
+    }
+  }
 }
 
+# ======================== Main ===========================
 # imported
 . .\lib\Clear-SessionData.ps1
 . .\lib\Load-Module.ps1
 . .\lib\Select-DomainController.ps1
 . .\lib\Show-TestRun.ps1
-# process
-# Start-CheckUserInfo
-$userObjects = Get-EscapeData | New-UserObj
-$aDProperties = $userObjects[0].PSObject.Properties.Name
-$global:adData = Get-ADData $aDProperties
-$userObjects | Update-ADAttributes
+
+$aDProperties = @(
+  'givenname'
+  'sn'
+  'middlename'
+  'initials'
+  'employeeID'
+  'company'
+  'title'
+  'description'
+  'department'
+  'departmentnumber'
+  'physicalDeliveryOfficeName'
+  'extensionAttribute1'
+)
+# $aDProperties = $userObjects[0].PSObject.Properties.Name
+$adData = Get-ADData $aDProperties
+$userObjects = Get-EscapeData | New-PropertyObj
+$userObjects | Update-ADAttributes -adData $adData -properties $aDProperties
+$userObjects | Update-AccountExpiration
