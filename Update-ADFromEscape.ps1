@@ -41,21 +41,6 @@ param (
   [SWITCH]$WhatIf
 )
 
-# function Compare-Data ($escapeData, $adData, $properties) {
-#   Write-Verbose $MyInvocation.MyCommand.name
-#   Write-Verbose ('{0},Escape Count: {1}, AD Count {2}' -f $MyInvocation.MyCommand.name, $escapeData.count, $adData.count )
-#   $compareParams = @{
-#     ReferenceObject  = $escapeData
-#     DifferenceObject = $adData
-#     Property         = $properties
-#     Debug            = $false
-#   }
-#   $results = Compare-Object @compareParams | Where-Object { ($_.sideindicator -eq '=>') }
-#   # $output = foreach ($item in $results) { $AeriesData.Where({ $_.employeeId -eq $item.employeeId }) }
-#   Write-Verbose ( '{0},Count: {1}' -f $MyInvocation.MyCommand.name, $results.count)
-#   $results
-# }
-
 # filter Find-DuplicateIds {
 #   $id = $_.employeeId
 #   $adObj = $adData.Where({ $_.employeeId -eq $id })
@@ -148,7 +133,7 @@ function Update-ADAttributes ($adData, $properties) {
     $id = $_.EmployeeID
     $adObj = $adData.Where({ $_.EmployeeID -eq $id })
     if (-not$adObj) { return }
-    Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.name, $_.EmployeeID)
+    Write-Verbose ('{0},{1},{2}' -f $MyInvocation.MyCommand.Name, $_.EmployeeID, $adObj.name)
     Write-Verbose ($_ | Out-String)
     # fixed double spaces in name/displayName
     $fixedName = Remove-ExtraSpaces $adObj.name
@@ -164,8 +149,8 @@ function Update-ADAttributes ($adData, $properties) {
       if ( $propData -match '[A-Za-z0-9]') {
         # Begin case-sensitive compare data between AD and DB
         if ( $adObj.$prop -cnotcontains $propData ) {
-          $msgVars = $count, $MyInvocation.MyCommand.Name, $adObj.SamAccountName, $prop, $($adObj.$prop), $propData
-          Write-Host ("{0},{1},{2},{3},[{4}] => [{5}]" -f $msgVars) -Fore Blue
+          $msgVars = $count, $MyInvocation.MyCommand.Name, $id, $adObj.SamAccountName, $prop, $($adObj.$prop), $propData
+          Write-Host ("{0},{1},{2},{3},{4},[{5}] => [{6}]" -f $msgVars) -Fore Blue
           Write-Debug 'Set?'
           Set-ADUser -Identity $adObj.ObjectGUID -Replace @{$prop = $propData } -WhatIf:$WhatIf
         }
@@ -207,6 +192,11 @@ function Update-AccountExpiration {
 . .\lib\Load-Module.ps1
 . .\lib\Select-DomainController.ps1
 . .\lib\Show-TestRun.ps1
+
+Show-TestRun
+Clear-SessionData
+
+Start-ADSession
 
 $aDProperties = @(
   'givenname'
