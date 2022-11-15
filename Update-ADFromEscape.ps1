@@ -187,7 +187,7 @@ function Update-AccountExpiration {
 }
 
 # ======================== Main ===========================
-# imported
+# Imported
 . .\lib\Clear-SessionData.ps1
 . .\lib\Load-Module.ps1
 . .\lib\Select-DomainController.ps1
