@@ -177,3 +177,4 @@ pip-log.txt
 .svn/
 /notes.ps1
 /jenkins.ps1
+/params.ps1

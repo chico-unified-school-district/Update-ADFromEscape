@@ -65,20 +65,22 @@ function Get-ADData ($properties) {
 function Get-EscapeData {
   Write-Verbose ('{0}' -f $MyInvocation.MyCommand.Name)
   $sqlParams = @{
-    Server     = $SQLServerEmployees
-    Database   = $SQLDatabaseEmployees
-    Credential = $SQLCredentialEmployees
-    Query      = (Get-Content .\sql\active-employees.sql -Raw)
+    Server                 = $SQLServerEmployees
+    Database               = $SQLDatabaseEmployees
+    Credential             = $SQLCredentialEmployees
+    TrustServerCertificate = $true
+    Query                  = (Get-Content .\sql\active-employees.sql -Raw)
   }
   Invoke-Sqlcmd @sqlParams | ConvertTo-Csv | ConvertFrom-Csv
 }
 
 function Get-SiteRefData {
   $params = @{
-    Server     = $SQLServerSiteRef
-    Database   = $SQLDatabaseSiteRef
-    Credential = $SQLCredentialSiteRef
-    Query      = 'SELECT * FROM zone_ref;'
+    Server                 = $SQLServerSiteRef
+    Database               = $SQLDatabaseSiteRef
+    Credential             = $SQLCredentialSiteRef
+    TrustServerCertificate = $true
+    Query                  = 'SELECT * FROM zone_ref;'
   }
   Invoke-Sqlcmd @params
 }
