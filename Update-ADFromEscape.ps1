@@ -55,7 +55,10 @@ param (
 function Get-ADData ($properties) {
   Write-Verbose ('{0}' -f $MyInvocation.MyCommand.Name)
   $adParams = @{
-    Filter     = 'mail -like "*@*" -and Enabled -eq $true -and EmployeeID -like "*"'
+    Filter     = 'mail -like "*@*" -and
+    Enabled -eq $true -and
+    EmployeeID -like "*"
+    '
     SearchBase = $ActiveDirectorySearchBase
     Properties = $properties
   }
