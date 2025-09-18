@@ -158,7 +158,8 @@ function Update-ADAttributes {
 }
 
 # =======================================================================================
-Import-Module -Name CommonScriptFunctions, dbatools
+Import-Module -Name CommonScriptFunctions
+Import-Module -Name dbatools -Cmdlet Invoke-DbaQuery, Set-DbatoolsConfig, Connect-DbaInstance, Disconnect-DbaInstance
 
 Show-BlockInfo main
 if ($WhatIf) { Show-TestRun }
@@ -170,7 +171,7 @@ $siteRefParams = @{
  Server     = $SiteRefServer
  Database   = $SiteRefDatabase
  Credential = $SiteRefCredential
- Query      = "SELECT * FROM $SQLSiteRefTable"
+ Query      = 'SELECT * FROM {0}' -f $SiteRefTable
 }
 $siteRefDate = New-SqlOperation @siteRefParams | ConvertTo-Csv | ConvertFrom-Csv
 
