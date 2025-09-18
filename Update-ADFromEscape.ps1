@@ -124,7 +124,7 @@ function New-Obj {
 function Show-Object {
  process {
   Write-Verbose ($MyInvocation.MyCommand.name, $_ | Out-String)
-  Read-Host ('{0}' -f ('x' * 50))
+  # Read-Host ('{0}' -f ('x' * 50))
  }
 }
 
