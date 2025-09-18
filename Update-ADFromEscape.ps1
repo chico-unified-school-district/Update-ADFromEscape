@@ -53,7 +53,7 @@ function Add-Description {
 
 function Add-SiteData ($refData) {
  process {
-  if (!$_.emp.SiteID) { return $_ }
+  if ($_.emp.SiteID -notmatch '\d') { return $_ }
   $siteID = $_.emp.SiteID
   $_.site = $refData.Where({ [int]$_.SiteCode -eq [int]$siteID })
   $_
@@ -159,7 +159,7 @@ function Update-ADAttributes {
 
 # =======================================================================================
 Import-Module -Name CommonScriptFunctions
-Import-Module -Name dbatools -Cmdlet Invoke-DbaQuery, Set-DbatoolsConfig, Connect-DbaInstance, Disconnect-DbaInstance
+Import-Module -Name dbatools -Cmdlet 'Invoke-DbaQuery', 'Set-DbatoolsConfig', 'Connect-DbaInstance', 'Disconnect-DbaInstance'
 
 Show-BlockInfo main
 if ($WhatIf) { Show-TestRun }
