@@ -79,6 +79,7 @@ function Add-PropertyListData {
   function Test-Null ($obj) { if ($obj -match '[A-Za-z0-9]') { $obj } else { $null } }
  }
  process {
+  $initials = if ($_.emp.NameMiddle -match '\w') { $_.emp.NameMiddle.SubString(0, 1) }
   $_.propertyList = [PSCustomObject]@{
    Company                    = 'Chico Unified School District'
    Department                 = Test-Null $_.emp.JobCategoryDescr
@@ -86,7 +87,7 @@ function Add-PropertyListData {
    Description                = Test-Null $_.desc
    extensionAttribute1        = Test-Null $_.emp.BargUnitID
    GivenName                  = Remove-ExtraSpaces $_.emp.NameFirst
-   initials                   = if ($_.emp.NameMiddle -match '\w') { $_.emp.NameMiddle.SubString(0, 1) }
+   initials                   = $initials
    middleName                 = Test-Null (Remove-ExtraSpaces $_.emp.NameMiddle)
    physicalDeliveryOfficeName = Test-Null $_.site.SiteDesc
    sn                         = Remove-ExtraSpaces $_.emp.NameLast
