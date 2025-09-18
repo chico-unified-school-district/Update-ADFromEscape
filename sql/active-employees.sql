@@ -26,6 +26,6 @@ FROM vwHREmploymentList
 WHERE
   -- EmploymentStatusCode NOT IN ('R','T','I','X','L','W')
   EmploymentStatusCode IN ('A','S')
-   -- AND DateTimeEdited >= DATEADD(day, -7, GETDATE())
+   AND DateTimeEdited >= DATEADD(day, -7, GETDATE())
 -- ORDER BY EmploymentStatusCode;
 ORDER BY NameLast;
