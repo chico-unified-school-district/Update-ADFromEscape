@@ -24,7 +24,7 @@ param (
  [Parameter(Mandatory = $True)][string]$SiteRefServer,
  [Parameter(Mandatory = $True)][string]$SiteRefDatabase,
  [Parameter(Mandatory = $True)][System.Management.Automation.PSCredential]$SiteRefCredential,
- [Parameter(Mandatory = $True)][string]$SQLSiteRefTable,
+ [Parameter(Mandatory = $True)][string]$SiteRefTable,
  [int[]]$SkipPersonIds,
  [Alias('wi')][SWITCH]$WhatIf
 )
