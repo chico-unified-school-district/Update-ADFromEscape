@@ -15,31 +15,18 @@
 
 [cmdletbinding()]
 param (
- [Parameter(Mandatory = $True)]
- [Alias('DCs')]
- [string[]]$DomainControllers,
- [Parameter(Mandatory = $True)]
- [Alias('ADCred')]
- [System.Management.Automation.PSCredential]$ADCredential,
- # String formatted as 'server\database'
- [Parameter(Mandatory = $True)]
- [Alias('SearchBase')]
- [string]$ActiveDirectorySearchBase,
- [Parameter(Mandatory = $True)]
- [string]$SQLServerEmployees,
- [Parameter(Mandatory = $True)]
- [string]$SQLDatabaseEmployees,
- [Parameter(Mandatory = $True)]
- [System.Management.Automation.PSCredential]$SQLCredentialEmployees,
- [Parameter(Mandatory = $True)]
- [string]$SQLServerSiteRef,
- [Parameter(Mandatory = $True)]
- [string]$SQLDatabaseSiteRef,
- [Parameter(Mandatory = $True)]
- [System.Management.Automation.PSCredential]$SQLCredentialSiteRef,
+ [Parameter(Mandatory = $True)][Alias('DCs')][string[]]$DomainControllers,
+ [Parameter(Mandatory = $True)][System.Management.Automation.PSCredential]$ADCredential,
+ [Parameter(Mandatory = $True)][Alias('SearchBase')][string]$ActiveDirectorySearchBase,
+ [Parameter(Mandatory = $True)][string]$EmployeesServer,
+ [Parameter(Mandatory = $True)][string]$EmployeesDatabase,
+ [Parameter(Mandatory = $True)][System.Management.Automation.PSCredential]$EmployeesCredential,
+ [Parameter(Mandatory = $True)][string]$SiteRefServer,
+ [Parameter(Mandatory = $True)][string]$SiteRefDatabase,
+ [Parameter(Mandatory = $True)][System.Management.Automation.PSCredential]$SiteRefCredential,
+ [Parameter(Mandatory = $True)][string]$SQLSiteRefTable,
  [int[]]$SkipPersonIds,
- [Alias('wi')]
- [SWITCH]$WhatIf
+ [Alias('wi')][SWITCH]$WhatIf
 )
 
 function Add-ADData ($data) {
@@ -68,7 +55,7 @@ function Add-SiteData ($refData) {
  process {
   if (!$_.emp.SiteID) { return $_ }
   $siteID = $_.emp.SiteID
-  $_.site = $refData.Where({ [int]$_.siteCode -eq [int]$siteID })
+  $_.site = $refData.Where({ [int]$_.SiteCode -eq [int]$siteID })
   $_
  }
 }
@@ -112,30 +99,15 @@ function Add-PropertyListData {
 
 function Get-EmployeeData {
  $sqlParams = @{
-  Server     = $SQLServerEmployees
-  Database   = $SQLDatabaseEmployees
-  Credential = $SQLCredentialEmployees
+  Server     = $EmployeesServer
+  Database   = $EmployeesDatabase
+  Credential = $EmployeesCredential
   Query      = (Get-Content .\sql\active-employees.sql -Raw)
  }
  $data = New-SqlOperation @sqlParams | ConvertTo-Csv | ConvertFrom-Csv
  Write-Host ('{0},Count: {1}' -f $MyInvocation.MyCommand.Name, @($data).count) -f Green
  $data
 }
-
-function Get-SiteRefData {
- $params = @{
-  Server     = $SQLServerSiteRef
-  Database   = $SQLDatabaseSiteRef
-  Credential = $SQLCredentialSiteRef
-  Query      = 'SELECT * FROM zone_ref WHERE siteAbbrv IS NOT NULL'
- }
- New-SqlOperation @params | ConvertTo-Csv | ConvertFrom-Csv
-}
-
-function Get-Site ($siteRef, $siteCode) {
- $siteRef.Where({ $_.siteCode -eq $siteCode })
-}
-
 function New-Obj {
  process {
   [PSCustomObject]@{
@@ -150,8 +122,8 @@ function New-Obj {
 
 function Show-Object {
  process {
-  Write-Host ($MyInvocation.MyCommand.name, $_ | Out-String) -f DarkGreen
-  Read-Host '==========================================================='
+  Write-Verbose ($MyInvocation.MyCommand.name, $_ | Out-String)
+  # Read-Host ('{0}' -f ('x' * 50))
  }
 }
 
@@ -172,7 +144,12 @@ function Update-ADAttributes {
    if ( $_.ad.$propName -cnotcontains $propValue) {
     $msgVars = $MyInvocation.MyCommand.Name, $_.ad.SamAccountName, $propName, $_.ad.$propName, $propValue
     Write-Host ('{0},{1},{2},[{3}] => [{4}]' -f $msgVars) -Fore Blue
-    # Set-ADUser -Identity $adObj.ObjectGUID -Replace @{$propName = $propValue } -WhatIf:$WhatIf
+    if (!$propValue) {
+     Set-ADUser -Identity $_.ad.ObjectGUID -Clear @{$propName = $propValue } -WhatIf:$WhatIf
+    }
+    else {
+     Set-ADUser -Identity $_.ad.ObjectGUID -Replace @{$propName = $propValue } -WhatIf:$WhatIf
+    }
    }
   }
   $_
@@ -187,6 +164,13 @@ if ($WhatIf) { Show-TestRun }
 
 # $cmdlets = 'Get-ADuser', 'Set-ADuser', 'Rename-ADObject', 'Clear-ADAccountExpiration'
 # Connect-ADSession -DomainControllers $DomainControllers -Cmdlets $cmdLets -Credential $ADCredential
+$siteRefParams = @{
+ Server     = $SiteRefServer
+ Database   = $SiteRefDatabase
+ Credential = $SiteRefCredential
+ Query      = "SELECT * FROM $SQLSiteRefTable"
+}
+$siteRefDate = New-SqlOperation @siteRefParams | ConvertTo-Csv | ConvertFrom-Csv
 
 $aDProperties = @(
  'Company'
@@ -206,7 +190,7 @@ $aDProperties = @(
 $ADData = Get-ADData $ActiveDirectorySearchBase $aDProperties
 
 Get-EmployeeData | New-Obj | Skip-Ids $SkipPersonIds | Add-ADData $ADData |
- Add-SiteData (Get-SiteRefData) |
+ Add-SiteData $siteRefDate |
   Add-Description |
    Add-PropertyListData |
     Update-ADAttributes |
