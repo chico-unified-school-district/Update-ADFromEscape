@@ -86,13 +86,13 @@ function Add-PropertyListData {
    departmentNumber           = Test-Null $_.emp.siteID
    Description                = Test-Null $_.desc
    extensionAttribute1        = Test-Null $_.emp.BargUnitID
+   employeeType               = $_.emp.EmploymentStatusCode.Trim()
    GivenName                  = Remove-ExtraSpaces $_.emp.NameFirst
    initials                   = $initials
    middleName                 = Test-Null (Remove-ExtraSpaces $_.emp.NameMiddle)
    physicalDeliveryOfficeName = Test-Null $_.site.SiteDesc
    sn                         = Remove-ExtraSpaces $_.emp.NameLast
    Title                      = Test-Null $_.emp.JobClassDescr
-   AccountExpirationDate      = $null
   }
   $_
  }
@@ -117,6 +117,8 @@ function New-Obj {
    site         = $null
    desc         = $null
    propertyList = $null
+   isSub        = $null
+   staleSub     = $null
   }
  }
 }
@@ -136,7 +138,30 @@ function Skip-Ids ([int[]]$ids) {
  }
 }
 
+function Set-SubStatus {
+ begin {
+  # 'name,description' | Out-File .\stale-subs.csv
+ }
+ process {
+  # Skip non-sub accounts
+  if ($_.emp.EmploymentStatusCode -notmatch 'S') { return $_ }
+  $_.isSub = $true
+  $pastDate = (Get-Date).AddMonths(-6)
+  # Skip newer, unused sub accounts
+  if ($_.WhenCreated -gt $pastDate -and $_.LastLogonDate -isnot [datetime]) { return $_ }
+  # Skip subs that have used their account with the 6 month grace period
+  if ($_.ad.LastLogonDate -and ($_.ad.LastLogonDate -gt $pastDate)) { return $_ }
+  Write-Verbose ('{0},{1},Stale Sub Account Detected!' -f $MyInvocation.MyCommand.Name, $_.ad.SamAccountName)
+  $_.staleSub = $true
+  # $_.ad.Name + ',' + $_.ad.description | Out-File .\stale-subs.csv -Append
+  $_
+ }
+}
+
 function Update-ADAttributes {
+ begin {
+  $clearProps = 'extensionAttribute1'
+ }
  process {
   foreach ($propName in $_.propertyList.PSObject.Properties.Name) {
    $propValue = $_.propertyList.$propName
@@ -144,18 +169,36 @@ function Update-ADAttributes {
    # Begin case-sensitive compare data between AD and DB.
    if ( $_.ad.$propName -cnotcontains $propValue) {
     $msgVars = $MyInvocation.MyCommand.Name, $_.ad.SamAccountName, $propName, $_.ad.$propName, $propValue
-    Write-Host ('{0},{1},{2},[{3}] => [{4}]' -f $msgVars) -Fore Blue
-    if (!$propValue) {
-     Set-ADUser -Identity $_.ad.ObjectGUID -Clear $propName -WhatIf:$WhatIf
+    if ($propValue) {
+     Write-Host ('{0},{1},{2},[{3}] => [{4}]' -f $msgVars) -Fore Blue
+     Set-ADUser -Identity $_.ad.ObjectGUID -Replace @{$propName = $propValue } -WhatIf:$WhatIf
     }
     else {
-     Set-ADUser -Identity $_.ad.ObjectGUID -Replace @{$propName = $propValue } -WhatIf:$WhatIf
+     if ($clearProps -notcontains $propName) { return $_ }
+     Write-Host ('{0},{1},{2},[{3}] => [{4}]' -f $msgVars) -Fore Blue
+     Set-ADUser -Identity $_.ad.ObjectGUID -Clear $propName -WhatIf:$WhatIf
     }
    }
   }
   $_
  }
 }
+
+function Update-ADExpireDate {
+ process {
+  # Skip accounts with 'student teacher' in the Description
+  if ($_.ad.Description -like '*student*teacher*') { return $_ }
+  # Skip stale subs with account expiration date already set.
+  if ($_.staleSub -and $_.ad.AccountExpirationDate -is [datetime]) { return $_ }
+  # Skip non-subs with no expiration date
+  if (!$_.isSub -and $_.ad.AccountExpirationDate -isnot [datetime]) { return $_ }
+  $msg = if ($_.staleSub) { 'Stale Sub Account - Adding Expire Date' } else { 'Clearing Expire Date' }
+  Write-Host ('{0},{1},{2},Emp Status: {3}' -f $MyInvocation.MyCommand.Name, $_.ad.SamAccountName, $msg, $_.emp.EmploymentStatusCode) -f DarkCyan
+  $expireDate = if ($_.staleSub) { (Get-Date).AddDays(14) } else { $null }
+  Set-ADUser -Identity $_.ad.ObjectGUID -AccountExpirationDate $expireDate -Confirm:$false -WhatIf:$WhatIf
+ }
+}
+
 
 # =======================================================================================
 Import-Module -Name CommonScriptFunctions
@@ -181,7 +224,9 @@ $aDProperties = @(
  'departmentNumber'
  'Description'
  'EmployeeID'
+ 'employeeType'
  'extensionAttribute1'
+ 'gecos'
  'GivenName'
  'initials'
  'middlename'
@@ -189,6 +234,8 @@ $aDProperties = @(
  'sn'
  'Title'
  'AccountExpirationDate'
+ 'LastLogonDate'
+ 'WhenCreated'
 )
 $ADData = Get-ADData $ActiveDirectorySearchBase $aDProperties
 
@@ -197,7 +244,9 @@ Get-EmployeeData | New-Obj | Skip-Ids $SkipPersonIds | Add-ADData $ADData |
   Add-Description |
    Add-PropertyListData |
     Update-ADAttributes |
-     Show-Object
+     Set-SubStatus |
+      # Update-ADExpireDate |
+      Show-Object
 
 if ($WhatIf) { Show-TestRun }
 Show-BlockInfo end

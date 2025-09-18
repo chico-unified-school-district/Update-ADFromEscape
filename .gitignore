@@ -182,3 +182,4 @@ pip-log.txt
 /json/site-lookup-table.json
 /Update-ADFromEscape-old copy.ps1
 /Update-ADFromEscape.ps1.old
+/stale-subs.csv
