@@ -163,8 +163,9 @@ Import-Module -Name CommonScriptFunctions, dbatools
 Show-BlockInfo main
 if ($WhatIf) { Show-TestRun }
 
-# $cmdlets = 'Get-ADuser', 'Set-ADuser', 'Rename-ADObject', 'Clear-ADAccountExpiration'
-# Connect-ADSession -DomainControllers $DomainControllers -Cmdlets $cmdLets -Credential $ADCredential
+$cmdlets = 'Get-ADuser', 'Set-ADuser', 'Rename-ADObject', 'Clear-ADAccountExpiration'
+Connect-ADSession -DomainControllers $DomainControllers -Cmdlets $cmdLets -Credential $ADCredential
+
 $siteRefParams = @{
  Server     = $SiteRefServer
  Database   = $SiteRefDatabase
