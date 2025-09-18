@@ -11,18 +11,20 @@ SELECT
     , JobClassDescr
     , JobCategoryDescr
     , SiteID
+    , SiteDescr
+    , EmploymentStatusDescr
+    , EmploymentStatusCode
 		, (CASE
 		WHEN NameFirstPreferred <> ''
 		   THEN NameFirstPreferred
 		ELSE NameFirst
 		END
 	 + ' ' + NameLast)       AS FullName
-    , SiteDescr
     , BargUnitID
+    , PersonTypeId
 FROM vwHREmploymentList
 WHERE
-  -- PersonTypeId IN (1,2,4)
-  -- AND
-  EmploymentStatusCode NOT IN ('R','T')
--- AND DateTimeEdited > DATEADD(day,-45,getdate())
-ORDER BY empId;
+  -- EmploymentStatusCode NOT IN ('R','T','I','X','L','W')
+  EmploymentStatusCode IN ('A','S')
+   AND DateTimeEdited >= DATEADD(day, -7, GETDATE())
+ORDER BY EmploymentStatusCode;
