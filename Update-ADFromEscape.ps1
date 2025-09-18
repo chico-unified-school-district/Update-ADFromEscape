@@ -124,7 +124,7 @@ function New-Obj {
 function Show-Object {
  process {
   Write-Verbose ($MyInvocation.MyCommand.name, $_ | Out-String)
-  # Read-Host ('{0}' -f ('x' * 50))
+  Read-Host ('{0}' -f ('x' * 50))
  }
 }
 
@@ -146,7 +146,7 @@ function Update-ADAttributes {
     $msgVars = $MyInvocation.MyCommand.Name, $_.ad.SamAccountName, $propName, $_.ad.$propName, $propValue
     Write-Host ('{0},{1},{2},[{3}] => [{4}]' -f $msgVars) -Fore Blue
     if (!$propValue) {
-     Set-ADUser -Identity $_.ad.ObjectGUID -Clear @{$propName = $propValue } -WhatIf:$WhatIf
+     Set-ADUser -Identity $_.ad.ObjectGUID -Clear $propName -WhatIf:$WhatIf
     }
     else {
      Set-ADUser -Identity $_.ad.ObjectGUID -Replace @{$propName = $propValue } -WhatIf:$WhatIf
