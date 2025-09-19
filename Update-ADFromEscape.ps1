@@ -51,6 +51,23 @@ function Add-Description {
  }
 }
 
+function Add-ExpirationDate {
+ process {
+  $adExpDate = $_.ad.AccountExpirationDate
+  # Skip student teacher account expiration changes
+  $_.expirationDate = if ($_.ad.Description -like '*student*teacher*') { 'skip' }
+  # Skip already expiring/expired stale subs
+  elseif ($_.staleSub -and ($adExpDate -is [datetime])) { 'skip' }
+  # Expire Stale Sub
+  elseif ($_.staleSub -and ($adExpDate -isnot [datetime])) { (Get-Date).AddDays(14) }
+  # Clear expire date for recently returned staff, as HR has se the employee to Active status.
+  # Office staff can enable these accounts and reset passwords as needed.
+  elseif (!$_.isSub -and ($adExpDate -is [datetime]) -and ($adExpDate -lt (Get-Date)) ) { $null }
+  else { 'skip' }
+  $_
+ }
+}
+
 function Add-SiteData ($refData) {
  process {
   if ($_.emp.SiteID -notmatch '\d') { return $_ }
@@ -76,7 +93,7 @@ function Get-ADData ($ou, $properties) {
 function Add-PropertyListData {
  begin {
   function Remove-ExtraSpaces ($string) { $string -replace '\s+', ' ' }
-  function Test-Null ($obj) { if ($obj -match '[A-Za-z0-9]') { $obj } else { $null } }
+  function Test-Null ($obj) { if ($obj -match '[A-Za-z0-9]') { $obj.Trim() } else { $null } }
  }
  process {
   $initials = if ($_.emp.NameMiddle -match '\w') { $_.emp.NameMiddle.SubString(0, 1) }
@@ -109,16 +126,18 @@ function Get-EmployeeData {
  Write-Host ('{0},Count: {1}' -f $MyInvocation.MyCommand.Name, @($data).count) -f Green
  $data
 }
+
 function New-Obj {
  process {
   [PSCustomObject]@{
-   ad           = $null
-   emp          = $_
-   site         = $null
-   desc         = $null
-   propertyList = $null
-   isSub        = $null
-   staleSub     = $null
+   ad             = $null
+   emp            = $_
+   site           = $null
+   desc           = $null
+   propertyList   = $null
+   isSub          = $null
+   staleSub       = $null
+   expirationDate = $null
   }
  }
 }
@@ -170,6 +189,7 @@ function Update-ADAttributes {
    if ( $_.ad.$propName -cnotcontains $propValue) {
     $msgVars = $MyInvocation.MyCommand.Name, $_.ad.SamAccountName, $propName, $_.ad.$propName, $propValue
     if ($propValue) {
+     # $propValue = if ($propValue -match '[A-Za-z0-9]') { $propValue.Trim() } else { $propValue }
      Write-Host ('{0},{1},{2},[{3}] => [{4}]' -f $msgVars) -Fore Blue
      Set-ADUser -Identity $_.ad.ObjectGUID -Replace @{$propName = $propValue } -WhatIf:$WhatIf
     }
@@ -186,16 +206,12 @@ function Update-ADAttributes {
 
 function Update-ADExpireDate {
  process {
-  # Skip accounts with 'student teacher' in the Description
-  if ($_.ad.Description -like '*student*teacher*') { return $_ }
-  # Skip stale subs with account expiration date already set.
-  if ($_.staleSub -and $_.ad.AccountExpirationDate -is [datetime]) { return $_ }
-  # Skip non-subs with no expiration date
-  if (!$_.isSub -and $_.ad.AccountExpirationDate -isnot [datetime]) { return $_ }
+  if ($_.expirationDate -eq 'skip') { return $_ }
   $msg = if ($_.staleSub) { 'Stale Sub Account - Adding Expire Date' } else { 'Clearing Expire Date' }
   Write-Host ('{0},{1},{2},Emp Status: {3}' -f $MyInvocation.MyCommand.Name, $_.ad.SamAccountName, $msg, $_.emp.EmploymentStatusCode) -f DarkCyan
   $expireDate = if ($_.staleSub) { (Get-Date).AddDays(14) } else { $null }
   Set-ADUser -Identity $_.ad.ObjectGUID -AccountExpirationDate $expireDate -Confirm:$false -WhatIf:$WhatIf
+  Read-Host '============================================='
  }
 }
 
@@ -245,8 +261,9 @@ Get-EmployeeData | New-Obj | Skip-Ids $SkipPersonIds | Add-ADData $ADData |
    Add-PropertyListData |
     Update-ADAttributes |
      Set-SubStatus |
-      # Update-ADExpireDate |
-      Show-Object
+      Add-ExpirationDate |
+       # Update-ADExpireDate |
+       Show-Object
 
 if ($WhatIf) { Show-TestRun }
 Show-BlockInfo end
