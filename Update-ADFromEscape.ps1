@@ -25,6 +25,7 @@ param (
  [Parameter(Mandatory = $True)][string]$SiteRefDatabase,
  [Parameter(Mandatory = $True)][System.Management.Automation.PSCredential]$SiteRefCredential,
  [Parameter(Mandatory = $True)][string]$SiteRefTable,
+ [Parameter(Mandatory = $True)][int]$GracePeriodMonths,
  [int[]]$SkipPersonIds,
  [Alias('wi')][SWITCH]$WhatIf
 )
@@ -40,30 +41,27 @@ function Add-ADData ($data) {
 
 function Add-Description {
  process {
-  $_.desc = if ($_.site.siteAbbrv -match '[A-Za-z]') {
-   ($_.site.siteAbbrv + ' ' + $_.emp.JobClassDescr) -replace '\s+', ' '
-  }
+  $_.desc = if ($_.ad.AccountExpirationDate -is [datetime]) { $_.ad.Description } # No Change for expiring accounts
+  elseif ($_.site.siteAbbrv -match '[A-Za-z]') { ($_.site.siteAbbrv + ' ' + $_.emp.JobClassDescr) -replace '\s+', ' ' }
   elseif ($_.emp.JobClassDescr -match '[A-Za-z]') { $_.emp.JobClassDescr }
-  else {
-   $_.ad.Description
-  }
+  else { $_.ad.Description }
   $_
  }
 }
 
-function Add-ExpirationDate {
+function Add-ClearExpiration {
  process {
-  $adExpDate = $_.ad.AccountExpirationDate
-  # Skip student teacher account expiration changes
-  $_.expirationDate = if ($_.ad.Description -like '*student*teacher*') { 'skip' }
-  # Skip already expiring/expired stale subs
-  elseif ($_.staleSub -and ($adExpDate -is [datetime])) { 'skip' }
-  # Expire Stale Sub
-  elseif ($_.staleSub -and ($adExpDate -isnot [datetime])) { (Get-Date).AddDays(14) }
-  # Clear expire date for recently returned staff, as HR has se the employee to Active status.
-  # Office staff can enable these accounts and reset passwords as needed.
-  elseif (!$_.isSub -and ($adExpDate -is [datetime]) -and ($adExpDate -lt (Get-Date)) ) { $null }
-  else { 'skip' }
+  $_.clearExpiration = if
+  # Expire date occurs today or in the future
+  ($_.ad.AccountExpirationDate -ge [DateTime]::Today ) { $false }
+  # Student teacher accounts with expiration
+  elseif (($_.ad.AccountExpirationDate -is [datetime]) -and ($_.ad.Description -like '*student*teacher*')) { $false }
+  # Stale sub with expiration date already set
+  elseif ($_.staleSub -and ($_.ad.AccountExpirationDate -is [datetime])) { $false }
+  # All others
+  elseif ($_.ad.AccountExpirationDate -isnot [datetime]) { $false }
+  # What about already expired stale subs?
+  else { $true } # clear expire date
   $_
  }
 }
@@ -77,7 +75,17 @@ function Add-SiteData ($refData) {
  }
 }
 
-function Get-ADData ($ou, $properties) {
+function Clear-ADExpireDate {
+ process {
+  if (!$_.clearExpiration) { return $_ }
+  $msg = $MyInvocation.MyCommand.Name, $_.userInfo
+  Write-Host ('{0},{1},Clearing expire date' -f $msg) -f DarkCyan
+  Set-ADUser -Identity $_.ad.ObjectGUID -AccountExpirationDate $null -Confirm:$false -WhatIf:$WhatIf
+  $_
+ }
+}
+
+function Get-ADActiveStaff ($ou, $properties) {
  Write-Verbose ('{0}' -f $MyInvocation.MyCommand.Name)
  $adParams = @{
   Filter     = 'mail -like "*@*" -and
@@ -129,15 +137,17 @@ function Get-EmployeeData {
 
 function New-Obj {
  process {
+  $usrInf = $_.EmpId + ' ' + $_.NameLast + ' ' + $_.NameFirst + ' ' +
+  $_.EmailWork + ' ' + $_.EmploymentStatusDescr + ' ' + $_.EmploymentStatusCode
   [PSCustomObject]@{
-   ad             = $null
-   emp            = $_
-   site           = $null
-   desc           = $null
-   propertyList   = $null
-   isSub          = $null
-   staleSub       = $null
-   expirationDate = $null
+   ad              = $null
+   clearExpiration = $null
+   desc            = $null
+   emp             = $_
+   propertyList    = $null
+   site            = $null
+   staleSub        = $null
+   userInfo        = $usrInf.trim()
   }
  }
 }
@@ -157,22 +167,18 @@ function Skip-Ids ([int[]]$ids) {
  }
 }
 
-function Set-SubStatus {
- begin {
-  # 'name,description' | Out-File .\stale-subs.csv
- }
+function Set-StaleSubStatus ([int]$months) {
+ begin { $pastDate = (Get-Date).AddMonths(-$months) }
  process {
-  # Skip non-sub accounts
-  if ($_.emp.EmploymentStatusCode -notmatch 'S') { return $_ }
-  $_.isSub = $true
-  $pastDate = (Get-Date).AddMonths(-6)
-  # Skip newer, unused sub accounts
-  if ($_.WhenCreated -gt $pastDate -and $_.LastLogonDate -isnot [datetime]) { return $_ }
-  # Skip subs that have used their account with the 6 month grace period
-  if ($_.ad.LastLogonDate -and ($_.ad.LastLogonDate -gt $pastDate)) { return $_ }
-  Write-Verbose ('{0},{1},Stale Sub Account Detected!' -f $MyInvocation.MyCommand.Name, $_.ad.SamAccountName)
-  $_.staleSub = $true
-  # $_.ad.Name + ',' + $_.ad.description | Out-File .\stale-subs.csv -Append
+  $_.staleSub = if (
+   ($_.emp.EmploymentStatusCode -match 'S') -and
+   (($_.ad.LastLogonDate -is [datetime]) -and ($_.ad.LastLogonDate -lt $pastDate) -or
+   (($_.ad.LastLogonDate -isnot [datetime]) -and ($_.WhenCreated -lt $pastDate))
+   )
+  ) {
+   Write-Host ('{0},{1},Stale Sub Detected' -f $MyInvocation.MyCommand.Name, $_.userInfo) -f Yellow
+   $true
+  }
   $_
  }
 }
@@ -187,15 +193,14 @@ function Update-ADAttributes {
    # Write-Host ('{0},{1},{2},{3}' -f $MyInvocation.MyCommand.Name, $_.ad.SamAccountName, $propName, $propValue) -F Green
    # Begin case-sensitive compare data between AD and DB.
    if ( $_.ad.$propName -cnotcontains $propValue) {
-    $msgVars = $MyInvocation.MyCommand.Name, $_.ad.SamAccountName, $propName, $_.ad.$propName, $propValue
+    $msgVars = $MyInvocation.MyCommand.Name, $_.userInfo, $propName, $_.ad.$propName, $propValue
     if ($propValue) {
-     # $propValue = if ($propValue -match '[A-Za-z0-9]') { $propValue.Trim() } else { $propValue }
      Write-Host ('{0},{1},{2},[{3}] => [{4}]' -f $msgVars) -Fore Blue
      Set-ADUser -Identity $_.ad.ObjectGUID -Replace @{$propName = $propValue } -WhatIf:$WhatIf
     }
     else {
      if ($clearProps -notcontains $propName) { return $_ }
-     Write-Host ('{0},{1},{2},[{3}] => [{4}]' -f $msgVars) -Fore Blue
+     Write-Host ('{0},{1},{2},[{3}] => [{4}]' -f $msgVars) -Fore Cyan
      Set-ADUser -Identity $_.ad.ObjectGUID -Clear $propName -WhatIf:$WhatIf
     }
    }
@@ -203,18 +208,6 @@ function Update-ADAttributes {
   $_
  }
 }
-
-function Update-ADExpireDate {
- process {
-  if ($_.expirationDate -eq 'skip') { return $_ }
-  $msg = if ($_.staleSub) { 'Stale Sub Account - Adding Expire Date' } else { 'Clearing Expire Date' }
-  Write-Host ('{0},{1},{2},Emp Status: {3}' -f $MyInvocation.MyCommand.Name, $_.ad.SamAccountName, $msg, $_.emp.EmploymentStatusCode) -f DarkCyan
-  $expireDate = if ($_.staleSub) { (Get-Date).AddDays(14) } else { $null }
-  Set-ADUser -Identity $_.ad.ObjectGUID -AccountExpirationDate $expireDate -Confirm:$false -WhatIf:$WhatIf
-  Read-Host '============================================='
- }
-}
-
 
 # =======================================================================================
 Import-Module -Name CommonScriptFunctions
@@ -253,16 +246,15 @@ $aDProperties = @(
  'LastLogonDate'
  'WhenCreated'
 )
-$ADData = Get-ADData $ActiveDirectorySearchBase $aDProperties
+$ActiveADStaff = Get-ADActiveStaff $ActiveDirectorySearchBase $aDProperties
 
-Get-EmployeeData | New-Obj | Skip-Ids $SkipPersonIds | Add-ADData $ADData |
- Add-SiteData $siteRefDate |
-  Add-Description |
-   Add-PropertyListData |
-    Update-ADAttributes |
-     Set-SubStatus |
-      Add-ExpirationDate |
-       # Update-ADExpireDate |
+Get-EmployeeData | New-Obj | Skip-Ids $SkipPersonIds | Add-ADData $ActiveADStaff | Add-SiteData $siteRefDate |
+ Add-Description |
+  Add-PropertyListData |
+   Update-ADAttributes |
+    Set-StaleSubStatus $GracePeriodMonths |
+     Add-ClearExpiration |
+      Clear-ADExpireDate |
        Show-Object
 
 if ($WhatIf) { Show-TestRun }
