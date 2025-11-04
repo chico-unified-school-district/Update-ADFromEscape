@@ -39,6 +39,24 @@ function Add-ADData ($data) {
  }
 }
 
+function Add-GSuiteLicense {
+ begin {
+  $licenses = @(
+   1010310009 # Google Workspace for Education Plus (Staff)
+  )
+ }
+ process {
+  $gSuite = $_.ad.HomePage
+  foreach ($license in $licenses) {
+   Write-Host ('{0},{1},Adding GSuite License {2}' -f $MyInvocation.MyCommand.Name, $_.userInfo, $license) -f DarkCyan
+   $ErrorActionPreference = 'Continue'
+   if (!$WhatIf) { & $gam user $gSuite add license $license }
+   $ErrorActionPreference = 'Stop'
+  }
+  $_
+ }
+}
+
 function Add-Description {
  process {
   $_.desc = if ($_.ad.AccountExpirationDate -is [datetime]) { $_.ad.Description } # No Change for expiring accounts
@@ -215,6 +233,7 @@ Import-Module -Name dbatools -Cmdlet 'Invoke-DbaQuery', 'Set-DbatoolsConfig', 'C
 
 Show-BlockInfo main
 if ($WhatIf) { Show-TestRun }
+$gam = 'C:\GAM7\gam.exe'
 
 $cmdlets = 'Get-ADuser', 'Set-ADuser', 'Rename-ADObject', 'Clear-ADAccountExpiration'
 Connect-ADSession -DomainControllers $DomainControllers -Cmdlets $cmdLets -Credential $ADCredential
@@ -228,6 +247,7 @@ $siteRefParams = @{
 $siteRefDate = New-SqlOperation @siteRefParams | ConvertTo-Csv | ConvertFrom-Csv
 
 $aDProperties = @(
+ 'AccountExpirationDate'
  'Company'
  'Department'
  'departmentNumber'
@@ -237,25 +257,29 @@ $aDProperties = @(
  'extensionAttribute1'
  'gecos'
  'GivenName'
+ 'HomePage'
  'initials'
+ 'LastLogonDate'
  'middlename'
  'physicalDeliveryOfficeName'
  'sn'
  'Title'
- 'AccountExpirationDate'
- 'LastLogonDate'
  'WhenCreated'
 )
 $ActiveADStaff = Get-ADActiveStaff $ActiveDirectorySearchBase $aDProperties
 
-Get-EmployeeData | New-Obj | Skip-Ids $SkipPersonIds | Add-ADData $ActiveADStaff | Add-SiteData $siteRefDate |
- Add-Description |
-  Add-PropertyListData |
-   Update-ADAttributes |
-    Set-StaleSubStatus $GracePeriodMonths |
-     Add-ClearExpiration |
-      Clear-ADExpireDate |
-       Show-Object
+Get-EmployeeData |
+ New-Obj |
+  Skip-Ids $SkipPersonIds |
+   Add-ADData $ActiveADStaff |
+    Add-SiteData $siteRefDate |
+     Add-Description |
+      Add-PropertyListData |
+       Update-ADAttributes |
+        Set-StaleSubStatus $GracePeriodMonths |
+         Add-ClearExpiration |
+          Clear-ADExpireDate |
+           Show-Object
 
 if ($WhatIf) { Show-TestRun }
 Show-BlockInfo end
