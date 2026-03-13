@@ -204,9 +204,23 @@ function Set-StaleSubStatus ([int]$months) {
 function Update-ADAttributes {
  begin {
   $clearProps = 'extensionAttribute1'
+  function skipAttribute ($adObj, $attribName) {
+   $rules = Get-Content .\json\customRules.json -Raw | ConvertFrom-Json | Where-Object { $_.customRules.Enabled }
+   foreach ($rule in $rules.customRules) {
+    if (!$rule.enabled -or $rule.type -ne 'AD Attribute') { continue } # Skip disabled rules
+    if ($adObj.info -notlike $rule.keyPhrase) { continue } # Skip if condition not met.
+    # if (!($adObj.info -like '*custom*Name*')) { continue } # Skip if condition not met.
+    if ($rule.attributes -contains $attribName) {
+     Write-Host ('{0},{1},[{2}] Skipping attribute update based on custom rule' -f $MyInvocation.MyCommand.Name, $adObj.SamAccountName, $attribName) -F Magenta
+     return $true
+    }
+   }
+  }
  }
  process {
+  Write-Verbose ( $_.ad | Format-List | Out-String )
   foreach ($propName in $_.propertyList.PSObject.Properties.Name) {
+   if (skipAttribute -adObj $_.ad -attribName $propName) { continue }
    $propValue = $_.propertyList.$propName
    # Write-Host ('{0},{1},{2},{3}' -f $MyInvocation.MyCommand.Name, $_.ad.SamAccountName, $propName, $propValue) -F Green
    # Begin case-sensitive compare data between AD and DB.
@@ -258,6 +272,7 @@ $aDProperties = @(
  'gecos'
  'GivenName'
  'HomePage'
+ 'info'
  'initials'
  'LastLogonDate'
  'middlename'
