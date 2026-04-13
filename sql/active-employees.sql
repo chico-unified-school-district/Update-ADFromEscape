@@ -11,7 +11,7 @@ SELECT
     , EmailWork
     , JobClassDescr
     , JobCategoryDescr
-    , SiteID
+    , SiteId
     , SiteDescr
     , EmploymentStatusDescr
     , EmploymentStatusCode
@@ -29,5 +29,6 @@ WHERE
   -- EmploymentStatusCode NOT IN ('R','T','I','X','L','W')
   EmploymentStatusCode IN ('A','S')
    AND DateTimeEdited >= DATEADD(day,-30, GETDATE())
-   -- AND EmpID = 123456 -- For testing
+   -- AND EmpID IN (1234567) -- For testing
+   -- AND SiteId = 010
 ORDER BY NameLast;
