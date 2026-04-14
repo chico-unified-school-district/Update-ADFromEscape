@@ -15,14 +15,19 @@
 
 [cmdletbinding()]
 param (
- [Parameter(Mandatory = $True)][Alias('DCs')][string[]]$DomainControllers,
+ [Parameter(Mandatory = $True)][string[]]$DomainControllers,
  [Parameter(Mandatory = $True)][System.Management.Automation.PSCredential]$ADCredential,
  [Parameter(Mandatory = $True)][Alias('SearchBase')][string]$ActiveDirectorySearchBase,
  [Parameter(Mandatory = $True)][string]$EmployeeServer,
  [Parameter(Mandatory = $True)][string]$EmployeeDatabase,
  [Parameter(Mandatory = $True)][System.Management.Automation.PSCredential]$EmployeeCredential,
+ [Parameter(Mandatory = $True)][string]$SiteRefServer,
+ [Parameter(Mandatory = $True)][string]$SiteRefDatabase,
+ [Parameter(Mandatory = $True)][System.Management.Automation.PSCredential]$SiteRefCredential,
+ [Parameter(Mandatory = $True)][string]$SiteRefTable,
  [Parameter(Mandatory = $True)][int]$GracePeriodMonths,
  [int[]]$SkipPersonIds,
+ [switch]$Wait,
  [Alias('wi')][SWITCH]$WhatIf
 )
 
@@ -117,16 +122,17 @@ function Set-ClearExpiration {
 
 function Set-Description {
  process {
-  $_.desc = switch ($_) {
+  $descStr = switch ($_) {
    # No Change for expiring accounts
    { $_.ad.AccountExpirationDate -is [datetime] -and ($_.clearExpiration -eq $false) } { $_.ad.Description; break }
    # Remove Expiration date info from description for accounts that will have expire date cleared.
    # This is to prevent confusion and preserve relevant description info.
    { $_.clearExpiration -eq $false -and ($_.ad.Description -match 'Expiration Date') } { ($_.ad.Description.Split('<')[0]) -replace '\s+', ' '; break }
    # Set Description with site and job class info when available.
-   { ($_.emp.JobClassDescr -match '[A-Za-z]') -or ($_.site) } { ($_.site.SiteDescrShort + ' ' + $_.emp.JobClassDescr) -replace '\s+', ' '; break }
+   { ($_.emp.JobClassDescr -match '[A-Za-z]') -or ($_.site) } { ($_.site.siteAbbrv + ' ' + $_.emp.JobClassDescr) -replace '\s+', ' '; break }
    default { $_.ad.Description }
   }
+  $_.desc = $descStr.Trim()
   $_
  }
 }
@@ -157,16 +163,16 @@ function Set-PropertyListData {
  }
 }
 
-function Set-SiteData ($instance) {
+function Set-SiteData ($instance, $table) {
  begin {
-  $sql = 'SELECT DISTINCT SiteId,SiteDescr,SiteDescrShort FROM OrgSite'
+  $sql = 'SELECT * FROM {0}' -f $table
   $siteData = New-SqlOperation -Server $instance -Query $sql | ConvertTo-Csv | ConvertFrom-Csv
-  # Write-Verbose ($MyInvocation.MyCommand.Name, $siteData | Out-String)
+  # Write-Verbose ($MyInvocation.MyCommand.Name, $siteData | Out-String)s
  }
  process {
   if ($_.emp.SiteId -notmatch '\d') { return $_ }
   $siteId = $_.emp.SiteId
-  $_.site = $siteData.Where({ $_.SiteId -eq $siteId })
+  $_.site = $siteData.Where({ [int]$_.SiteCode -eq [int]$siteId })
   if (!$_.site) { Write-Host ('{0},{1},Site not found for SiteId {2}' -f $MyInvocation.MyCommand.Name, $_.userInfo, $siteId) -f Red }
   $_
  }
@@ -196,7 +202,7 @@ function Show-Object {
  process {
   $i++
   Write-Verbose ($MyInvocation.MyCommand.name, $_ | Out-String)
-  # Read-Host ('{0}' -f ('x' * 50))
+  if ($Wait) { Read-Host ('{0}' -f ('x' * 50)) }
  }
  end {
   Write-Host ('{0},Total Processed: {1}' -f $MyInvocation.MyCommand.Name, $i) -f Green
@@ -288,6 +294,7 @@ $aDProperties = @(
 $aDStaffData = Get-ADStaffData $ActiveDirectorySearchBase $aDProperties
 
 $empSQLInstance = Connect-DbaInstance -SqlInstance $EmployeeServer -Database $EmployeeDatabase -SqlCredential $EmployeeCredential
+$intSQLInstance = Connect-DbaInstance -SqlInstance $SiteRefServer -Database $SiteRefDatabase -SqlCredential $SiteRefCredential
 
 # $sqlParams = @{
 #  Server     = $EmployeesServer
@@ -299,7 +306,7 @@ Get-EmployeeData $empSQLInstance |
  New-Obj |
   Skip-Ids $SkipPersonIds |
    Set-ADData $aDStaffData |
-    Set-SiteData $empSQLInstance |
+    Set-SiteData $intSQLInstance $SiteRefTable |
      Set-StaleSubStatus $GracePeriodMonths |
       Set-ClearExpiration |
        Set-Description |
