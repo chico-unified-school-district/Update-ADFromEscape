@@ -81,13 +81,12 @@ function New-Obj {
 }
 
 function Set-ADData ($ou, $properties) {
+ begin {
+  $adData = Get-ADUser -Filter "EmployeeId -like '*' -and Mail -like '*@*'" -SearchBase $ou -Properties $properties
+ }
  process {
-  $adParams = @{
-   Filter     = 'EmployeeID -eq "{0}"' -f $_.emp.EmpId
-   SearchBase = $ou
-   Properties = $properties
-  }
-  $_.ad = Get-ADUser @adParams
+  $empId = $_.emp.EmpId
+  $_.ad = $adData.Where({ $_.EmployeeId -eq $empId })
   if (!$_.ad) { return }
   $_
  }
@@ -160,18 +159,11 @@ function Set-SiteData ($instance, $table) {
 }
 
 function Set-StaleSubStatus ([int]$months) {
- begin { $pastDate = (Get-Date).AddMonths(-$months) }
+ begin { $cutOffDate = (Get-Date).AddMonths(-$months) }
  process {
-  $_.staleSub = if (
-   ($_.emp.EmploymentStatusCode -match 'S') -and
-   (($_.ad.LastLogonDate -is [datetime]) -and ($_.ad.LastLogonDate -lt $pastDate) -or
-   (($_.ad.LastLogonDate -isnot [datetime]) -and ($_.WhenCreated -lt $pastDate))
-   )
-  ) {
-   Write-Host ('{0},{1},Stale Sub Detected' -f $MyInvocation.MyCommand.Name, $_.userInfo) -f Yellow
-   $true
-  }
-  else { $false }
+  if ($_.emp.EmploymentStatusCode -notmatch 'S') { return $_ } # Skip non-subs
+  $lastUsed = if ($_.ad.LastLogonDate) { $_.ad.LastLogonDate } else { $_.ad.WhenCreated }
+  if ($lastUsed -le $cutOffDate) { $_.staleSub = $true }
   $_
  }
 }

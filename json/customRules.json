@@ -3,7 +3,7 @@
     {
       "id": "rule-1",
       "name": "Keep Custom Name",
-      "description": "If info contains 'customName', then skip updating the name attributes",
+      "description": "If info contains 'custom name', then skip updating the name attributes",
       "type": "AD Attribute",
       "enabled": true,
       "attributes": [
@@ -16,17 +16,17 @@
         "middleName",
         "initials"
       ],
-      "keyPhrase": "*custom*Name*",
+      "keyPhrase": "*custom*name*",
       "action": "Skip"
     },
     {
       "id": "rule-2",
       "name": "Keep Custom Department - this is not used",
-      "description": "If customDepartment appears in the 'info' attribute in the ad user object",
+      "description": "If 'custom department' appears in the 'info' attribute in the ad user object",
       "enabled": false,
       "attributes": ["department"],
       "keyPhrase": "*custom*Department*",
-      "actions": []
+      "action": "None"
     }
   ],
   "version": "1.0"
