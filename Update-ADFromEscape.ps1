@@ -34,8 +34,7 @@ param (
 function Clear-ADExpireDate {
  process {
   if (!$_.clearExpiration) { return $_ }
-  $msg = $MyInvocation.MyCommand.Name, $_.userInfo
-  Write-Host ('{0},{1},Clearing expire date' -f $msg) -f DarkCyan
+  Write-Host ('{0},{1},Clearing AD account expiration date' -f $MyInvocation.MyCommand.Name, $_.userInfo) -f DarkCyan
   Set-ADUser -Identity $_.ad.ObjectGUID -AccountExpirationDate $null -Confirm:$false -WhatIf:$WhatIf
   $_
  }
@@ -54,23 +53,11 @@ function Enable-ADAccount {
  }
 }
 
-function Get-ADStaffData ($ou, $properties) {
- Write-Verbose ('{0}' -f $MyInvocation.MyCommand.Name)
- $adParams = @{
-  Filter     = 'mail -like "*@*" -and
-    EmployeeID -like "*"
-    '
-  SearchBase = $ou
-  Properties = $properties
- }
- Get-ADUser @adParams | Where-Object { $_.EmployeeID -notmatch '[A-Za-z]' }
-}
-
 function Get-EmployeeData ($instance) {
  $sql = Get-Content .\sql\active-employees.sql -Raw
  $data = New-SqlOperation -Server $instance -Query $sql | ConvertTo-Csv | ConvertFrom-Csv
  Write-Host ('{0},Count: {1}' -f $MyInvocation.MyCommand.Name, @($data).count) -f Green
- if ($WhatIf) { Start-Sleep -Seconds 5 } # A slight pause on test runs to allow time to read the count before processing begins.
+ if ($WhatIf) { Start-Sleep -Seconds 2 } # A slight pause on test runs to allow time to read the count before processing begins.
  $data
 }
 
@@ -88,15 +75,19 @@ function New-Obj {
    staleSub        = $null
    userInfo        = '[' + $usrInf.trim() + ']'
   }
-  Write-Verbose ($MyInvocation.MyCommand.name, $obj | Out-String)
+  # Write-Verbose ($MyInvocation.MyCommand.name, $obj | Out-String)
   $obj
  }
 }
 
-function Set-ADData ($data) {
+function Set-ADData ($ou, $properties) {
  process {
-  $id = $_.emp.EmpID
-  $_.ad = $data.Where({ $_.EmployeeID -eq $id })
+  $adParams = @{
+   Filter     = 'EmployeeID -eq "{0}"' -f $_.emp.EmpId
+   SearchBase = $ou
+   Properties = $properties
+  }
+  $_.ad = Get-ADUser @adParams
   if (!$_.ad) { return }
   $_
  }
@@ -104,36 +95,26 @@ function Set-ADData ($data) {
 
 function Set-ClearExpiration {
  process {
-  $_.clearExpiration = if
-  # Expire date occurs today or in the future
-  ($_.ad.AccountExpirationDate -ge [DateTime]::Today ) { $false }
-  # Student teacher accounts with expiration
-  # elseif (($_.ad.AccountExpirationDate -is [datetime]) -and ($_.ad.Description -like '*student*teacher*')) { $false }
-  elseif (($_.ad.AccountExpirationDate -is [datetime]) -and ($_.emp.PersonTypeId -eq '6')) { $false }
-  # Stale sub with expiration date already set
-  elseif ($_.staleSub -and ($_.ad.AccountExpirationDate -is [datetime])) { $false }
-  # All others
-  elseif ($_.ad.AccountExpirationDate -isnot [datetime]) { $false }
-  # What about already expired stale subs?
-  else { $true } # clear expire date
+  $_.clearExpiration = switch ($_) {
+   { $_.ad.AccountExpirationDate -isnot [datetime] } { break } # No need to clear empty value
+   { $_.emp.PersonTypeId -eq '6' } { break } # No need to clear student teacher accounts
+   { $_.staleSub } { break } # No need to clear stale subs
+   default { $true }
+  }
   $_
  }
 }
 
 function Set-Description {
  process {
-  $descStr = switch ($_) {
-   # No Change for expiring accounts
-   { $_.ad.AccountExpirationDate -is [datetime] -and ($_.clearExpiration -eq $false) } { $_.ad.Description; break }
-   # Remove Expiration date info from description for accounts that will have expire date cleared.
-   # This is to prevent confusion and preserve relevant description info.
-   { $_.clearExpiration -eq $false -and ($_.ad.Description -match 'Expiration Date') } { ($_.ad.Description.Split('<')[0]) -replace '\s+', ' '; break }
-   # Set Description with site and job class info when available.
-   { ($_.emp.JobClassDescr -match '[A-Za-z]') -or ($_.site) } { ($_.site.siteAbbrv + ' ' + $_.emp.JobClassDescr) -replace '\s+', ' '; break }
-   default { $_.ad.Description }
+  if ($_.staleSub) { return $_ }
+  $jobData = (($_.site.siteAbbrv + ' ' + $_.emp.JobClassDescr) -replace '\s+', ' ')
+  $_.desc = switch ($_.emp.EmploymentStatusCode) {
+   { $_ -match 'S' } { 'Substitute ' + $jobData; break }
+   { $_ -match 'A' } { $jobData; break }
+   default { 'Chico Unified Employee Account' }
   }
-  $_.desc = $descStr.Trim()
-  $_
+  return $_
  }
 }
 
@@ -158,7 +139,7 @@ function Set-PropertyListData {
    sn                         = Remove-ExtraSpaces $_.emp.NameLast
    Title                      = Test-Null $_.emp.JobClassDescr
   }
-  Write-Verbose ($MyInvocation.MyCommand.name, $_ | Out-String)
+  # Write-Verbose ($MyInvocation.MyCommand.name, $_ | Out-String)
   $_
  }
 }
@@ -222,7 +203,7 @@ function Skip-Ids ([int[]]$ids) {
 
 function Update-ADAttributes {
  begin {
-  $clearProps = 'extensionAttribute1' # Only clear these attributes when cleared in Escape.
+  $clearProps = 'extensionAttribute1' # Only clear these attributes when cleared in Escape. Added by request.
   function skipAttribute ($adObj, $attribName) {
    $rules = Get-Content .\json\customRules.json -Raw | ConvertFrom-Json | Where-Object { $_.customRules.Enabled }
    foreach ($rule in $rules.customRules) {
@@ -258,6 +239,7 @@ function Update-ADAttributes {
 }
 
 # =======================================================================================
+Clear-Host
 Import-Module -Name CommonScriptFunctions
 Import-Module -Name dbatools -Cmdlet 'Invoke-DbaQuery', 'Set-DbatoolsConfig', 'Connect-DbaInstance', 'Disconnect-DbaInstance'
 
@@ -291,21 +273,14 @@ $aDProperties = @(
  'Title'
  'WhenCreated'
 )
-$aDStaffData = Get-ADStaffData $ActiveDirectorySearchBase $aDProperties
 
 $empSQLInstance = Connect-DbaInstance -SqlInstance $EmployeeServer -Database $EmployeeDatabase -SqlCredential $EmployeeCredential
 $intSQLInstance = Connect-DbaInstance -SqlInstance $SiteRefServer -Database $SiteRefDatabase -SqlCredential $SiteRefCredential
 
-# $sqlParams = @{
-#  Server     = $EmployeesServer
-#  Database   = $EmployeesDatabase
-#  Credential = $EmployeesCredential
-# }
-
 Get-EmployeeData $empSQLInstance |
  New-Obj |
   Skip-Ids $SkipPersonIds |
-   Set-ADData $aDStaffData |
+   Set-ADData -ou $ActiveDirectorySearchBase -properties $aDProperties |
     Set-SiteData $intSQLInstance $SiteRefTable |
      Set-StaleSubStatus $GracePeriodMonths |
       Set-ClearExpiration |

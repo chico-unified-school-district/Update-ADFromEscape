@@ -1,6 +1,6 @@
 SELECT
   -- If NameFirstPreferred is present then use this as first name
-    EmpID
+    EmpId
   ,CASE
      WHEN NameFirstPreferred <> ''
       THEN NameFirstPreferred
@@ -29,6 +29,6 @@ WHERE
   -- EmploymentStatusCode NOT IN ('R','T','I','X','L','W')
   EmploymentStatusCode IN ('A','S')
    AND DateTimeEdited >= DATEADD(day,-30, GETDATE())
-   -- AND EmpID IN (1234567) -- For testing
+   -- AND EmpID IN (000000) -- For testing
    -- AND SiteId = 010
-ORDER BY NameLast;
+ORDER BY EmpId;
