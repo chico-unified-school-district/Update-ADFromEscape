@@ -65,11 +65,13 @@ function New-Obj {
  process {
   $usrInf = $_.EmpId + ',' + $_.NameLast + ',' + $_.NameFirst + ',' +
   $_.EmailWork + ',' + $_.EmploymentStatusDescr + ',' + $_.EmploymentStatusCode
+  $jobDesc = if ($_.JobClassDescr) { $_.JobClassDescr } else { $_.JobCategoryDescr }
   $obj = [PSCustomObject]@{
    ad              = $null
    clearExpiration = $null
    desc            = $null
    emp             = $_
+   jobDesc         = $jobDesc
    propertyList    = $null
    site            = $null
    staleSub        = $null
@@ -107,7 +109,8 @@ function Set-ClearExpiration {
 function Set-Description {
  process {
   if ($_.staleSub) { return $_ }
-  $jobData = (($_.site.siteAbbrv + ' ' + $_.emp.JobClassDescr) -replace '\s+', ' ')
+  $jobData = (($_.site.siteAbbrv + ' ' + $_.jobDesc) -replace '\s+', ' ')
+  # $jobData = (($_.site.siteAbbrv + ' ' + $_.emp.JobClassDescr) -replace '\s+', ' ')
   $_.desc = switch ($_.emp.EmploymentStatusCode) {
    { $_ -match 'S' } { 'Substitute ' + $jobData; break }
    { $_ -match 'A' } { $jobData; break }
