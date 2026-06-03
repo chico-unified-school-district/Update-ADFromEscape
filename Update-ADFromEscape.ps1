@@ -63,19 +63,16 @@ function Get-EmployeeData ($instance) {
 
 function New-Obj {
  process {
-  $usrInf = $_.EmpId + ',' + $_.NameLast + ',' + $_.NameFirst + ',' +
-  $_.EmailWork + ',' + $_.EmploymentStatusDescr + ',' + $_.EmploymentStatusCode
-  $jobDesc = if ($_.JobClassDescr) { $_.JobClassDescr } else { $_.JobCategoryDescr }
   $obj = [PSCustomObject]@{
    ad              = $null
    clearExpiration = $null
    desc            = $null
    emp             = $_
-   jobDesc         = $jobDesc
+   jobDesc         = $null
    propertyList    = $null
    site            = $null
    staleSub        = $null
-   userInfo        = '[' + $usrInf.trim() + ']'
+   userInfo        = $null
   }
   # Write-Verbose ($MyInvocation.MyCommand.name, $obj | Out-String)
   $obj
@@ -106,17 +103,23 @@ function Set-ClearExpiration {
  }
 }
 
-function Set-Description {
+function Set-ADDescription {
  process {
   if ($_.staleSub) { return $_ }
   $jobData = (($_.site.siteAbbrv + ' ' + $_.jobDesc) -replace '\s+', ' ')
-  # $jobData = (($_.site.siteAbbrv + ' ' + $_.emp.JobClassDescr) -replace '\s+', ' ')
   $_.desc = switch ($_.emp.EmploymentStatusCode) {
    { $_ -match 'S' } { 'Substitute ' + $jobData; break }
    { $_ -match 'A' } { $jobData; break }
    default { 'Chico Unified Employee Account' }
   }
   return $_
+ }
+}
+
+function Set-JobDescription {
+ process {
+  $_.jobDesc = if ($_.emp.JobClassDescr) { $_.emp.JobClassDescr } else { $_.emp.JobCategoryDescr }
+  $_
  }
 }
 
@@ -133,6 +136,7 @@ function Set-PropertyListData {
    departmentNumber           = Test-Null $_.emp.siteId
    Description                = Test-Null $_.desc
    extensionAttribute1        = Test-Null $_.emp.BargUnitID
+   extensionAttribute2        = Test-Null $_.emp.siteId
    employeeType               = $_.emp.EmploymentStatusCode.Trim()
    GivenName                  = Remove-ExtraSpaces $_.emp.NameFirst
    initials                   = $initials
@@ -167,6 +171,15 @@ function Set-StaleSubStatus ([int]$months) {
   if ($_.emp.EmploymentStatusCode -notmatch 'S') { return $_ } # Skip non-subs
   $lastUsed = if ($_.ad.LastLogonDate) { $_.ad.LastLogonDate } else { $_.ad.WhenCreated }
   if ($lastUsed -le $cutOffDate) { $_.staleSub = $true }
+  $_
+ }
+}
+
+function Set-UserInfo {
+ process {
+  $str = $_.emp.EmpId + ',' + $_.emp.NameLast + ',' + $_.emp.NameFirst + ',' +
+  $_.emp.EmailWork + ',' + $_.emp.EmploymentStatusDescr + ',' + $_.emp.EmploymentStatusCode
+  $_.userInfo = '[' + $str.trim() + ']'
   $_
  }
 }
@@ -275,16 +288,18 @@ $intSQLInstance = Connect-DbaInstance -SqlInstance $SiteRefServer -Database $Sit
 Get-EmployeeData $empSQLInstance |
  New-Obj |
   Skip-Ids $SkipPersonIds |
-   Set-ADData -ou $ActiveDirectorySearchBase -properties $aDProperties |
-    Set-SiteData $intSQLInstance $SiteRefTable |
-     Set-StaleSubStatus $GracePeriodMonths |
-      Set-ClearExpiration |
-       Set-Description |
-        Set-PropertyListData |
-         Clear-ADExpireDate |
-          Update-ADAttributes |
-           Enable-ADAccount |
-            Show-Object
+   Set-UserInfo |
+    Set-ADData -ou $ActiveDirectorySearchBase -properties $aDProperties |
+     Set-SiteData $intSQLInstance $SiteRefTable |
+      Set-JobDescription |
+       Set-StaleSubStatus $GracePeriodMonths |
+        Set-ClearExpiration |
+         Set-ADDescription |
+          Set-PropertyListData |
+           Clear-ADExpireDate |
+            Update-ADAttributes |
+             Enable-ADAccount |
+              Show-Object
 
 Clear-SessionData
 if ($WhatIf) { Show-TestRun }

@@ -28,7 +28,6 @@ FROM vwHREmploymentList
 WHERE
   -- EmploymentStatusCode NOT IN ('R','T','I','X','L','W')
   EmploymentStatusCode IN ('A','S')
-   AND DateTimeEdited >= DATEADD(day,-30, GETDATE())
+   AND DateTimeEdited >= DATEADD(day,-90, GETDATE())
    -- AND EmpID IN (000000) -- For testing
-   -- AND SiteId = 010
 ORDER BY EmpId;
