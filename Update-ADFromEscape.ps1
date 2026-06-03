@@ -130,13 +130,14 @@ function Set-PropertyListData {
  }
  process {
   $initials = if ($_.emp.NameMiddle -match '\w') { $_.emp.NameMiddle.SubString(0, 1) }
+  $deptNum = if ($_.emp.SiteId -match '\d') { [int]$_.emp.SiteId } else { 999 }
   $_.propertyList = [PSCustomObject]@{
    Company                    = 'Chico Unified School District'
    Department                 = Test-Null $_.emp.JobCategoryDescr
-   departmentNumber           = Test-Null $_.emp.siteId
+   departmentNumber           = $deptNum
    Description                = Test-Null $_.desc
    extensionAttribute1        = Test-Null $_.emp.BargUnitID
-   extensionAttribute2        = Test-Null $_.emp.siteId
+   extensionAttribute2        = $deptNum
    employeeType               = $_.emp.EmploymentStatusCode.Trim()
    GivenName                  = Remove-ExtraSpaces $_.emp.NameFirst
    initials                   = $initials
@@ -269,6 +270,7 @@ $aDProperties = @(
  'EmployeeID'
  'employeeType'
  'extensionAttribute1'
+ 'extensionAttribute2'
  'gecos'
  'GivenName'
  'HomePage'
